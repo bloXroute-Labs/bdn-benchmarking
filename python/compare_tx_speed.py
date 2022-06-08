@@ -1,16 +1,10 @@
 import argparse
 import asyncio
-import datetime
-import json
-import requests
 import sys
 import time
 from collections import defaultdict
-from typing import Optional, Dict
 
 from eth_account import Account
-from eth_account.datastructures import SignedTransaction
-from threading import Thread
 from web3 import Web3
 
 from bloxroute_cli.provider.ws_provider import WsProvider
