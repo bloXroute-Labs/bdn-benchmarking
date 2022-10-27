@@ -26,6 +26,7 @@ type TxFeedsCompareService struct {
 	ethCh    chan *message
 	ethTxCh  chan *message
 	bxCh     chan *message
+	bxCh2    chan *message
 
 	hashes chan string
 
@@ -53,6 +54,7 @@ func NewTxFeedsCompareService() *TxFeedsCompareService {
 	return &TxFeedsCompareService{
 		handlers:        make(chan handler),
 		bxCh:            make(chan *message),
+		bxCh2:           make(chan *message),
 		ethCh:           make(chan *message),
 		ethTxCh:         make(chan *message, bufSize),
 		hashes:          make(chan string, bufSize),
@@ -153,8 +155,8 @@ func (s *TxFeedsCompareService) Run(c *cli.Context) error {
 		leadTimeSec  = c.Int(flags.LeadTime.Name)
 		intervalSec  = c.Int(flags.Interval.Name)
 		trailTimeSec = c.Int(flags.TxTrailTime.Name)
-		ethURI       = c.String(flags.Eth.Name)
-		ctx, cancel  = context.WithCancel(context.Background())
+		//ethURI       = c.String(flags.Eth.Name)
+		ctx, cancel = context.WithCancel(context.Background())
 
 		readerGroup sync.WaitGroup
 		handleGroup sync.WaitGroup
@@ -189,20 +191,30 @@ func (s *TxFeedsCompareService) Run(c *cli.Context) error {
 			c.Bool(flags.UseGoGateway.Name),
 		)
 	}
-	go s.readFeedFromEth(ctx, &readerGroup, s.ethCh, ethURI)
+	go s.readFeedFromBX(
+		ctx,
+		&readerGroup,
+		s.bxCh2,
+		c.String(flags.Gateway2.Name),
+		c.String(flags.AuthHeader.Name),
+		c.Bool(flags.ExcludeDuplicates.Name),
+		c.Bool(flags.ExcludeFromBlockchain.Name),
+		c.Bool(flags.UseGoGateway.Name),
+	)
+	//go s.readFeedFromEth(ctx, &readerGroup, s.ethCh, ethURI)
 
-	if !s.excTxContents {
-		const totalReaders = 4
-		for i := 0; i < totalReaders; i++ {
-			readerGroup.Add(1)
-			go s.readTxContentsFromEth(
-				ctx,
-				&readerGroup,
-				s.ethTxCh,
-				ethURI,
-			)
-		}
-	}
+	//if !s.excTxContents {
+	//	const totalReaders = 4
+	//	for i := 0; i < totalReaders; i++ {
+	//		readerGroup.Add(1)
+	//		go s.readTxContentsFromEth(
+	//			ctx,
+	//			&readerGroup,
+	//			s.ethTxCh,
+	//			ethURI,
+	//		)
+	//	}
+	//}
 
 	handleGroup.Add(1)
 	go s.handleUpdates(ctx, &handleGroup)
@@ -288,7 +300,15 @@ func (s *TxFeedsCompareService) handleUpdates(
 					continue
 				}
 
-				if err := s.processFeedFromBX(data); err != nil {
+				if err := s.processFeedFromBX(data, 1); err != nil {
+					log.Errorf("error: %v", err)
+				}
+			case data, ok := <-s.bxCh2:
+				if !ok {
+					continue
+				}
+
+				if err := s.processFeedFromBX(data, 2); err != nil {
 					log.Errorf("error: %v", err)
 				}
 			case data, ok := <-s.ethCh:
@@ -306,7 +326,7 @@ func (s *TxFeedsCompareService) handleUpdates(
 	}
 }
 
-func (s *TxFeedsCompareService) processFeedFromBX(data *message) error {
+func (s *TxFeedsCompareService) processFeedFromBX(data *message, gw int) error {
 	if data.err != nil {
 		return fmt.Errorf("failed to read message from feed %q: %v",
 			s.feedName, data.err)
@@ -322,10 +342,10 @@ func (s *TxFeedsCompareService) processFeedFromBX(data *message) error {
 	txHash := msg.Params.Result.TxHash
 	log.Debugf("got message at %s (BXR node, ALL), txHash: %s", timeReceived, txHash)
 
-	if timeReceived.Before(s.timeToBeginComparison) {
-		s.leadNewHashes.Add(txHash)
-		return nil
-	}
+	//if timeReceived.Before(s.timeToBeginComparison) {
+	//	s.leadNewHashes.Add(txHash)
+	//	return nil
+	//}
 
 	if !s.excTxContents {
 		to := msg.Params.Result.TxContents.To
@@ -346,19 +366,32 @@ func (s *TxFeedsCompareService) processFeedFromBX(data *message) error {
 			}
 		}
 	}
-
 	if entry, ok := s.seenHashes[txHash]; ok {
-		if entry.bxrTimeReceived.IsZero() {
-			entry.bxrTimeReceived = timeReceived
+		if gw == 1 {
+			if entry.bxrTimeReceived.IsZero() {
+				entry.bxrTimeReceived = timeReceived
+			}
+		} else {
+			if entry.bxrTimeReceived2.IsZero() {
+				entry.bxrTimeReceived2 = timeReceived
+			}
 		}
 	} else if timeReceived.Before(s.timeToEndComparison) &&
 		!s.trailNewHashes.Contains(txHash) &&
 		!s.leadNewHashes.Contains(txHash) {
 
-		s.seenHashes[txHash] = &hashEntry{
-			hash:            txHash,
-			bxrTimeReceived: timeReceived,
+		if gw == 1 {
+			s.seenHashes[txHash] = &hashEntry{
+				hash:            txHash,
+				bxrTimeReceived: timeReceived,
+			}
+		} else {
+			s.seenHashes[txHash] = &hashEntry{
+				hash:             txHash,
+				bxrTimeReceived2: timeReceived,
+			}
 		}
+
 	} else {
 		s.trailNewHashes.Add(txHash)
 	}
@@ -467,14 +500,14 @@ func (s *TxFeedsCompareService) stats(ignoreDelta int, verbose bool) string {
 	const timestampFormat = "2006-01-02T15:04:05.000"
 
 	var (
-		txSeenByBothFeedsGatewayFirst      = 0
-		txSeenByBothFeedsEthNodeFirst      = 0
-		txReceivedByGatewayFirstTotalDelta = 0.0
-		txReceivedByEthNodeFirstTotalDelta = 0.0
-		newTxFromGatewayFeedFirst          = 0
-		newTxFromEthNodeFeedFirst          = 0
-		totalTxFromGateway                 = 0
-		totalTxFromEthNode                 = 0
+		txSeenByBothFeedsGatewayFirst       = 0
+		txSeenByBothFeedsGateway2First      = 0
+		txReceivedByGatewayFirstTotalDelta  = 0.0
+		txReceivedByGateway2FirstTotalDelta = 0.0
+		newTxFromGatewayFeedFirst           = 0
+		newTxFromGateway2FeedFirst          = 0
+		totalTxFromGateway                  = 0
+		totalTxFromGateway2                 = 0
 	)
 
 	for txHash, entry := range s.seenHashes {
@@ -493,11 +526,11 @@ func (s *TxFeedsCompareService) stats(ignoreDelta int, verbose bool) string {
 					log.Errorf("cannot add txHash %q to all hashes file: %v", txHash, err)
 				}
 			}
-			newTxFromEthNodeFeedFirst++
-			totalTxFromEthNode++
+			newTxFromGateway2FeedFirst++
+			totalTxFromGateway2++
 			continue
 		}
-		if entry.ethTimeReceived.IsZero() {
+		if entry.bxrTimeReceived2.IsZero() {
 			gatewayTimeReceived := entry.bxrTimeReceived
 
 			if s.allHashesFile != nil {
@@ -512,13 +545,13 @@ func (s *TxFeedsCompareService) stats(ignoreDelta int, verbose bool) string {
 		}
 
 		var (
-			ethNodeTimeReceived = entry.ethTimeReceived
-			gatewayTimeReceived = entry.bxrTimeReceived
-			timeReceivedDiff    = gatewayTimeReceived.Sub(ethNodeTimeReceived)
+			gatewayTimeReceived2 = entry.bxrTimeReceived2
+			gatewayTimeReceived  = entry.bxrTimeReceived
+			timeReceivedDiff     = gatewayTimeReceived.Sub(gatewayTimeReceived2)
 		)
 
 		totalTxFromGateway++
-		totalTxFromEthNode++
+		totalTxFromGateway2++
 
 		if math.Abs(timeReceivedDiff.Seconds()) > float64(ignoreDelta) {
 			s.highDeltaHashes.Add(entry.hash)
@@ -529,7 +562,7 @@ func (s *TxFeedsCompareService) stats(ignoreDelta int, verbose bool) string {
 			record := []string{
 				txHash,
 				gatewayTimeReceived.Format(timestampFormat),
-				ethNodeTimeReceived.Format(timestampFormat),
+				gatewayTimeReceived2.Format(timestampFormat),
 				fmt.Sprintf("%d", timeReceivedDiff.Milliseconds()),
 			}
 			if err := s.allHashesFile.Write(record); err != nil {
@@ -538,23 +571,23 @@ func (s *TxFeedsCompareService) stats(ignoreDelta int, verbose bool) string {
 		}
 
 		switch {
-		case gatewayTimeReceived.Before(ethNodeTimeReceived):
+		case gatewayTimeReceived.Before(gatewayTimeReceived2):
 			newTxFromGatewayFeedFirst++
 			txSeenByBothFeedsGatewayFirst++
 			txReceivedByGatewayFirstTotalDelta += -timeReceivedDiff.Seconds()
-		case ethNodeTimeReceived.Before(gatewayTimeReceived):
-			newTxFromEthNodeFeedFirst++
-			txSeenByBothFeedsEthNodeFirst++
-			txReceivedByEthNodeFirstTotalDelta += timeReceivedDiff.Seconds()
+		case gatewayTimeReceived2.Before(gatewayTimeReceived):
+			newTxFromGateway2FeedFirst++
+			txSeenByBothFeedsGateway2First++
+			txReceivedByGateway2FirstTotalDelta += timeReceivedDiff.Seconds()
 		}
 	}
 
 	var (
 		newTxSeenByBothFeeds = txSeenByBothFeedsGatewayFirst +
-			txSeenByBothFeedsEthNodeFirst
-		txReceivedByGatewayFirstAvgDelta = 0
-		txReceivedByEthNodeFirstAvgDelta = 0
-		txPercentageSeenByGatewayFirst   = 0
+			txSeenByBothFeedsGateway2First
+		txReceivedByGatewayFirstAvgDelta  = 0
+		txReceivedByGateway2FirstAvgDelta = 0
+		txPercentageSeenByGatewayFirst    = 0
 	)
 
 	if txSeenByBothFeedsGatewayFirst != 0 {
@@ -562,9 +595,9 @@ func (s *TxFeedsCompareService) stats(ignoreDelta int, verbose bool) string {
 			txReceivedByGatewayFirstTotalDelta / float64(txSeenByBothFeedsGatewayFirst) * 1000))
 	}
 
-	if txSeenByBothFeedsEthNodeFirst != 0 {
-		txReceivedByEthNodeFirstAvgDelta = int(math.Round(
-			txReceivedByEthNodeFirstTotalDelta / float64(txSeenByBothFeedsEthNodeFirst) * 1000))
+	if txSeenByBothFeedsGateway2First != 0 {
+		txReceivedByGateway2FirstAvgDelta = int(math.Round(
+			txReceivedByGateway2FirstTotalDelta / float64(txSeenByBothFeedsGateway2First) * 1000))
 	}
 
 	if newTxSeenByBothFeeds != 0 {
@@ -575,24 +608,24 @@ func (s *TxFeedsCompareService) stats(ignoreDelta int, verbose bool) string {
 	results := fmt.Sprintf(
 		"\nAnalysis of Transactions received on both feeds:\n"+
 			"Number of transactions: %d\n"+
-			"Number of transactions received from Gateway first: %d\n"+
-			"Number of transactions received from Ethereum node first: %d\n"+
-			"Percentage of transactions seen first from gateway: %d%%\n"+
-			"Average time difference for transactions received first from gateway (ms): %d\n"+
-			"Average time difference for transactions received first from Ethereum node (ms): %d\n"+
+			"Number of transactions received from Gateway Denys first: %d\n"+
+			"Number of transactions received from Gateway Develop node first: %d\n"+
+			"Percentage of transactions seen first from Gateway Denys: %d%%\n"+
+			"Average time difference for transactions received first from Gateway Denys (ms): %d\n"+
+			"Average time difference for transactions received first from Gateway Develop node (ms): %d\n"+
 			"\nTotal Transactions summary:\n"+
-			"Total tx from gateway: %d\n"+
-			"Total tx from eth node: %d\n"+
+			"Total tx from Gateway Denys: %d\n"+
+			"Total tx from Gateway Develop: %d\n"+
 			"Number of low fee tx ignored: %d\n",
 
 		newTxSeenByBothFeeds,
 		txSeenByBothFeedsGatewayFirst,
-		txSeenByBothFeedsEthNodeFirst,
+		txSeenByBothFeedsGateway2First,
 		txPercentageSeenByGatewayFirst,
 		txReceivedByGatewayFirstAvgDelta,
-		txReceivedByEthNodeFirstAvgDelta,
+		txReceivedByGateway2FirstAvgDelta,
 		totalTxFromGateway,
-		totalTxFromEthNode,
+		totalTxFromGateway2,
 		len(s.lowFeeHashes))
 
 	verboseResults := fmt.Sprintf(
@@ -602,8 +635,8 @@ func (s *TxFeedsCompareService) stats(ignoreDelta int, verbose bool) string {
 			"Total number of transactions seen: %d\n",
 		len(s.highDeltaHashes),
 		newTxFromGatewayFeedFirst,
-		newTxFromEthNodeFeedFirst,
-		newTxFromEthNodeFeedFirst+newTxFromGatewayFeedFirst,
+		newTxFromGateway2FeedFirst,
+		newTxFromGateway2FeedFirst+newTxFromGatewayFeedFirst,
 	)
 
 	if verbose {

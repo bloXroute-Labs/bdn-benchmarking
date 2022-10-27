@@ -19,6 +19,7 @@ func main() {
 				Usage: "compares stream of txs from gateway vs node",
 				Flags: []cli.Flag{
 					flags.Gateway,
+					flags.Gateway2,
 					flags.Eth,
 					flags.TxFeedName,
 					flags.MinGasPrice,

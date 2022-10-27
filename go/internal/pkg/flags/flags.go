@@ -5,7 +5,12 @@ import "github.com/urfave/cli/v2"
 // CLI flags for ethcompare
 var (
 	Gateway = &cli.StringFlag{
-		Name:  "gateway",
+		Name:  "gateway-denys",
+		Usage: "gateway websocket connection string",
+		Value: "ws://127.0.0.1:28333/ws",
+	}
+	Gateway2 = &cli.StringFlag{
+		Name:  "gateway-develop",
 		Usage: "gateway websocket connection string",
 		Value: "ws://127.0.0.1:28333/ws",
 	}
@@ -45,7 +50,7 @@ var (
 	Interval = &cli.IntFlag{
 		Name:  "interval",
 		Usage: "length of feed sample interval in seconds",
-		Value: 60,
+		Value: 30,
 	}
 	NumIntervals = &cli.IntFlag{
 		Name:  "num-intervals",
