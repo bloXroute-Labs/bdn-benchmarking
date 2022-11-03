@@ -342,10 +342,10 @@ func (s *TxFeedsCompareService) processFeedFromGRPC(data *message) error {
 	}
 	txHash := msg.TxHash
 	log.Debugf("got message at %s (BXR node, ALL), txHash: %s", timeReceived, txHash)
-	//if timeReceived.Before(s.timeToBeginComparison) {
-	//	s.leadNewHashes.Add(txHash)
-	//	return nil
-	//}
+	if timeReceived.Before(s.timeToBeginComparison) {
+		s.leadNewHashes.Add(txHash)
+		return nil
+	}
 	if !s.excTxContents {
 		to := msg.To
 		if !s.addresses.Empty() && to != nil && !s.addresses.Contains(*to) {
