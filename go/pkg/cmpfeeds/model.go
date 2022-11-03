@@ -33,6 +33,12 @@ type ethBkFeedResponse struct {
 	} `json:"params"`
 }
 
+type grpcFeedResponse struct {
+	TxHash   string  `json:"hash"`
+	GasPrice *string `json:"gas_price"`
+	To       *string `json:"to"`
+}
+
 type bxTxFeedResponse struct {
 	Params struct {
 		Result struct {

@@ -8,11 +8,14 @@ import (
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"math"
 	"os"
 	"performance/internal/pkg/flags"
 	"performance/internal/pkg/utils"
 	"performance/internal/pkg/ws"
+	pb "performance/pkg/cmpfeeds/pb"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,7 +29,7 @@ type TxFeedsCompareService struct {
 	ethCh    chan *message
 	ethTxCh  chan *message
 	bxCh     chan *message
-	bxCh2    chan *message
+	bxChGrpc chan *message
 
 	hashes chan string
 
@@ -54,7 +57,7 @@ func NewTxFeedsCompareService() *TxFeedsCompareService {
 	return &TxFeedsCompareService{
 		handlers:        make(chan handler),
 		bxCh:            make(chan *message),
-		bxCh2:           make(chan *message),
+		bxChGrpc:        make(chan *message),
 		ethCh:           make(chan *message),
 		ethTxCh:         make(chan *message, bufSize),
 		hashes:          make(chan string, bufSize),
@@ -191,16 +194,17 @@ func (s *TxFeedsCompareService) Run(c *cli.Context) error {
 			c.Bool(flags.UseGoGateway.Name),
 		)
 	}
-	go s.readFeedFromBX(
-		ctx,
-		&readerGroup,
-		s.bxCh2,
-		c.String(flags.Gateway2.Name),
-		c.String(flags.AuthHeader.Name),
-		c.Bool(flags.ExcludeDuplicates.Name),
-		c.Bool(flags.ExcludeFromBlockchain.Name),
-		c.Bool(flags.UseGoGateway.Name),
-	)
+	go s.readFeedFromGRPC(ctx, &readerGroup, s.bxChGrpc)
+	//go s.readFeedFromBX(
+	//	ctx,
+	//	&readerGroup,
+	//	s.bxCh2,
+	//	c.String(flags.Gateway2.Name),
+	//	c.String(flags.AuthHeader.Name),
+	//	c.Bool(flags.ExcludeDuplicates.Name),
+	//	c.Bool(flags.ExcludeFromBlockchain.Name),
+	//	c.Bool(flags.UseGoGateway.Name),
+	//)
 	//go s.readFeedFromEth(ctx, &readerGroup, s.ethCh, ethURI)
 
 	//if !s.excTxContents {
@@ -300,15 +304,15 @@ func (s *TxFeedsCompareService) handleUpdates(
 					continue
 				}
 
-				if err := s.processFeedFromBX(data, 1); err != nil {
+				if err := s.processFeedFromBX(data); err != nil {
 					log.Errorf("error: %v", err)
 				}
-			case data, ok := <-s.bxCh2:
+			case data, ok := <-s.bxChGrpc:
 				if !ok {
 					continue
 				}
 
-				if err := s.processFeedFromBX(data, 2); err != nil {
+				if err := s.processFeedFromGRPC(data); err != nil {
 					log.Errorf("error: %v", err)
 				}
 			case data, ok := <-s.ethCh:
@@ -326,7 +330,60 @@ func (s *TxFeedsCompareService) handleUpdates(
 	}
 }
 
-func (s *TxFeedsCompareService) processFeedFromBX(data *message, gw int) error {
+func (s *TxFeedsCompareService) processFeedFromGRPC(data *message) error {
+	if data.err != nil {
+		return fmt.Errorf("failed to read message from feed %q: %v",
+			s.feedName, data.err)
+	}
+	timeReceived := time.Now()
+	var msg grpcFeedResponse
+	if err := json.Unmarshal(data.bytes, &msg); err != nil {
+		return fmt.Errorf("failed to unmarshal message: %v", err)
+	}
+	txHash := msg.TxHash
+	log.Debugf("got message at %s (BXR node, ALL), txHash: %s", timeReceived, txHash)
+	//if timeReceived.Before(s.timeToBeginComparison) {
+	//	s.leadNewHashes.Add(txHash)
+	//	return nil
+	//}
+	if !s.excTxContents {
+		to := msg.To
+		if !s.addresses.Empty() && to != nil && !s.addresses.Contains(*to) {
+			return nil
+		}
+
+		if price := msg.GasPrice; s.minGasPrice != nil && price != nil {
+			gasPrice, err := parseGasPrice(*price)
+			if err != nil {
+				return fmt.Errorf("cannot parse gas price %q for transaction %q: %v",
+					*price, txHash, err)
+			}
+
+			if float64(gasPrice) < *s.minGasPrice {
+				s.lowFeeHashes.Add(txHash)
+				return nil
+			}
+		}
+	}
+	if entry, ok := s.seenHashes[txHash]; ok {
+		if entry.bxrTimeReceived2.IsZero() {
+			entry.bxrTimeReceived2 = timeReceived
+		}
+	} else if timeReceived.Before(s.timeToEndComparison) &&
+		!s.trailNewHashes.Contains(txHash) &&
+		!s.leadNewHashes.Contains(txHash) {
+		s.seenHashes[txHash] = &hashEntry{
+			hash:             txHash,
+			bxrTimeReceived2: timeReceived,
+		}
+	} else {
+		s.trailNewHashes.Add(txHash)
+	}
+
+	return nil
+}
+
+func (s *TxFeedsCompareService) processFeedFromBX(data *message) error {
 	if data.err != nil {
 		return fmt.Errorf("failed to read message from feed %q: %v",
 			s.feedName, data.err)
@@ -342,10 +399,10 @@ func (s *TxFeedsCompareService) processFeedFromBX(data *message, gw int) error {
 	txHash := msg.Params.Result.TxHash
 	log.Debugf("got message at %s (BXR node, ALL), txHash: %s", timeReceived, txHash)
 
-	//if timeReceived.Before(s.timeToBeginComparison) {
-	//	s.leadNewHashes.Add(txHash)
-	//	return nil
-	//}
+	if timeReceived.Before(s.timeToBeginComparison) {
+		s.leadNewHashes.Add(txHash)
+		return nil
+	}
 
 	if !s.excTxContents {
 		to := msg.Params.Result.TxContents.To
@@ -367,31 +424,16 @@ func (s *TxFeedsCompareService) processFeedFromBX(data *message, gw int) error {
 		}
 	}
 	if entry, ok := s.seenHashes[txHash]; ok {
-		if gw == 1 {
-			if entry.bxrTimeReceived.IsZero() {
-				entry.bxrTimeReceived = timeReceived
-			}
-		} else {
-			if entry.bxrTimeReceived2.IsZero() {
-				entry.bxrTimeReceived2 = timeReceived
-			}
+		if entry.bxrTimeReceived.IsZero() {
+			entry.bxrTimeReceived = timeReceived
 		}
 	} else if timeReceived.Before(s.timeToEndComparison) &&
 		!s.trailNewHashes.Contains(txHash) &&
 		!s.leadNewHashes.Contains(txHash) {
-
-		if gw == 1 {
-			s.seenHashes[txHash] = &hashEntry{
-				hash:            txHash,
-				bxrTimeReceived: timeReceived,
-			}
-		} else {
-			s.seenHashes[txHash] = &hashEntry{
-				hash:             txHash,
-				bxrTimeReceived2: timeReceived,
-			}
+		s.seenHashes[txHash] = &hashEntry{
+			hash:            txHash,
+			bxrTimeReceived: timeReceived,
 		}
-
 	} else {
 		s.trailNewHashes.Add(txHash)
 	}
@@ -644,6 +686,45 @@ func (s *TxFeedsCompareService) stats(ignoreDelta int, verbose bool) string {
 	}
 
 	return results
+}
+
+func (s *TxFeedsCompareService) readFeedFromGRPC(ctx context.Context,
+	wg *sync.WaitGroup,
+	out chan<- *message) {
+	defer wg.Done()
+
+	log.Infof("Initiating connection to GRPC")
+
+	conn, err := grpc.Dial("54.89.230.181:5001", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		log.Fatalf("failed to connect: %v", err)
+	}
+	client := pb.NewGatewayClient(conn)
+	callContext, cancel := context.WithTimeout(context.Background(), 24*time.Hour)
+	defer cancel()
+	stream, err := client.NewTx(callContext, &pb.NewTxRequest{})
+	for {
+		data, err := stream.Recv()
+		if err != nil {
+			log.Errorf("error in recieve: %v", err)
+		}
+		res, err := json.Marshal(data)
+		if err != nil {
+			log.Errorf("error in marshal: %v", err)
+		}
+		var (
+			msg = &message{
+				bytes: res,
+				err:   err,
+			}
+		)
+
+		select {
+		case <-ctx.Done():
+			return
+		case out <- msg:
+		}
+	}
 }
 
 func (s *TxFeedsCompareService) readFeedFromBX(
