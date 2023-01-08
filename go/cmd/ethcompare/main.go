@@ -1,52 +1,30 @@
 package main
 
 import (
-	"github.com/urfave/cli/v2"
-	"log"
 	"os"
 	"performance/internal/pkg/flags"
 	"performance/pkg/cmpfeeds"
 	"performance/pkg/cmptxspeed"
+
+	log "github.com/sirupsen/logrus"
+	"github.com/urfave/cli/v2"
 )
 
 func main() {
+	log.SetLevel(log.DebugLevel)
+
 	app := &cli.App{
 		Name:  "ethcompare",
 		Usage: "compares stream of txs/blocks from gateway vs node",
 		Commands: []*cli.Command{
 			{
-				Name:  "transactions",
-				Usage: "compares stream of txs from gateway vs node",
-				Flags: []cli.Flag{
-					flags.Gateway,
-					flags.Eth,
-					flags.TxFeedName,
-					flags.MinGasPrice,
-					flags.Addresses,
-					flags.ExcludeTxContents,
-					flags.Interval,
-					flags.NumIntervals,
-					flags.LeadTime,
-					flags.TxTrailTime,
-					flags.Dump,
-					flags.ExcludeDuplicates,
-					flags.TxIgnoreDelta,
-					flags.UseCloudAPI,
-					flags.Verbose,
-					flags.ExcludeFromBlockchain,
-					flags.CloudAPIWSURI,
-					flags.AuthHeader,
-					flags.UseGoGateway,
-				},
-				Action: cmpfeeds.NewTxFeedsCompareService().Run,
-			},
-			{
 				Name:  "blocks",
 				Usage: "compares stream of blocks from gateway vs node",
 				Flags: []cli.Flag{
 					flags.Gateway,
-					flags.Eth,
+					flags.Gateway2,
 					flags.BkFeedName,
+					flags.BkFeed2Name,
 					flags.ExcludeBkContents,
 					flags.Interval,
 					flags.NumIntervals,

@@ -9,10 +9,10 @@ var (
 		Usage: "gateway websocket connection string",
 		Value: "ws://127.0.0.1:28333/ws",
 	}
-	Eth = &cli.StringFlag{
-		Name:  "eth",
-		Usage: "ethereum node websocket connection string",
-		Value: "ws://127.0.0.1:8546",
+	Gateway2 = &cli.StringFlag{
+		Name:  "gateway2",
+		Usage: "second gateway websocket connection string",
+		Value: "ws://127.0.0.1:28333/ws",
 	}
 	TxFeedName = &cli.StringFlag{
 		Name:  "feed-name",
@@ -21,6 +21,11 @@ var (
 	}
 	BkFeedName = &cli.StringFlag{
 		Name:  "feed-name",
+		Usage: "specify feed name, possible values: 'newBlocks', 'bdnBlocks'",
+		Value: "bdnBlocks",
+	}
+	BkFeed2Name = &cli.StringFlag{
+		Name:  "feed2-name",
 		Usage: "specify feed name, possible values: 'newBlocks', 'bdnBlocks'",
 		Value: "bdnBlocks",
 	}
@@ -75,11 +80,6 @@ var (
 		Name:  "exclude-duplicates",
 		Usage: "for pendingTxs only",
 		Value: true,
-	}
-	TxIgnoreDelta = &cli.IntFlag{
-		Name:  "ignore-delta",
-		Usage: "ignore tx with delta above this amount (seconds)",
-		Value: 5,
 	}
 	BkIgnoreDelta = &cli.IntFlag{
 		Name:  "ignore-delta",

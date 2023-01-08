@@ -11,9 +11,10 @@ type message struct {
 }
 
 type hashEntry struct {
-	ethTimeReceived time.Time
-	bxrTimeReceived time.Time
-	hash            string
+	ethTimeReceived  time.Time
+	bxrTimeReceived  time.Time
+	bxr2TimeReceived time.Time
+	hash             string
 }
 
 type ethTxFeedResponse struct {
@@ -47,7 +48,14 @@ type bxTxFeedResponse struct {
 type bxBkFeedResponse struct {
 	Params struct {
 		Result struct {
-			Hash string `json:"hash"`
+			Hash  string `json:"hash"`
+			Block struct {
+				Body struct {
+					ExecutionPayload struct {
+						Hash string `json:"blockHash"`
+					} `json:"execution_payload"`
+				} `json:"body"`
+			} `json:"block"`
 		} `json:"result"`
 	} `json:"params"`
 }

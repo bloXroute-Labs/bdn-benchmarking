@@ -4,10 +4,11 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"github.com/gorilla/websocket"
 	"io/ioutil"
 	"net/http"
 	"strings"
+
+	"github.com/gorilla/websocket"
 )
 
 // Request represents data which is needed to send RPC requests to ETH node or BX gateway.
@@ -241,7 +242,11 @@ func newSubBkFeedRequestBX(id int, feedName string, excBkContents bool) *Request
 	if excBkContents {
 		options["include"] = []string{"hash", "header"}
 	} else {
-		options["include"] = []string{"hash", "header", "transactions", "uncles"}
+		if feedName == "bdnBeaconBlocks" {
+			options["include"] = []string{"hash", "header", "body"}
+		} else {
+			options["include"] = []string{"hash", "header", "transactions", "uncles"}
+		}
 	}
 
 	return NewRequest(id, "subscribe", []interface{}{
