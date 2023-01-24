@@ -7,7 +7,12 @@ var (
 	Gateway = &cli.StringFlag{
 		Name:  "gateway",
 		Usage: "gateway websocket connection string",
-		Value: "ws://127.0.0.1:28333/ws",
+		Value: "ws://127.0.0.1:28346/ws",
+	}
+	GatewayGrpc = &cli.StringFlag{
+		Name:  "gateway-grpc",
+		Usage: "gateway grpc connection string",
+		Value: "127.0.0.1:5001",
 	}
 	Eth = &cli.StringFlag{
 		Name:  "eth",

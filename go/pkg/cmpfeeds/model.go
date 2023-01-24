@@ -16,6 +16,18 @@ type hashEntry struct {
 	hash            string
 }
 
+type grpcHashEntry struct {
+	grpcBxrTimeReceived time.Time
+	bxrTimeReceived     time.Time
+	hash                string
+}
+
+type grpcFeedResponse struct {
+	TxHash   string  `json:"hash"`
+	GasPrice *string `json:"gas_price"`
+	To       *string `json:"to"`
+}
+
 type ethTxFeedResponse struct {
 	Params struct {
 		Subscription string `json:"subscription"`

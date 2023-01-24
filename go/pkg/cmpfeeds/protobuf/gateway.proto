@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+option go_package = "github.com/bloXroute-Labs/bxgateway-private-go/bxgateway/gateway";
+
+// The gateway service definition.
+package  gateway;
+service Gateway {
+  rpc NewTxs (NewTxsRequest) returns (stream NewTxsReply){}
+
+}
+
+message NewTxsRequest{
+  string filters = 1;
+}
+
+message NewTxsReply{
+  string hash = 1;
+  string subscriptionID = 2;
+  string nonce = 3;
+  string gas_price = 4;
+  string gas = 5;
+  string to =6 ;
+  string value = 7;
+  string input = 8;
+  string v = 9;
+  string r = 10;
+  string s = 11;
+  string from = 12;
+  string type = 13;
+  string local_region = 14;
+  string time = 15;
+}
