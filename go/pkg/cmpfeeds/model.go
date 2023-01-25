@@ -23,9 +23,11 @@ type grpcHashEntry struct {
 }
 
 type grpcFeedResponse struct {
-	TxHash   string  `json:"hash"`
-	GasPrice *string `json:"gas_price"`
-	To       *string `json:"to"`
+	Tx []struct {
+		TxHash   string  `json:"hash"`
+		GasPrice *string `json:"gas_price"`
+		To       *string `json:"to"`
+	} `json:"tx"`
 }
 
 type ethTxFeedResponse struct {

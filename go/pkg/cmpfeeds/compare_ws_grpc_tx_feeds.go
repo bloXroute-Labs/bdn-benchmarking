@@ -355,19 +355,20 @@ func (s *TxWsGrpcCompareService) processFeedFromGRPC(data *message) error {
 	if err := json.Unmarshal(data.bytes, &msg); err != nil {
 		return fmt.Errorf("failed to unmarshal grpc message: %v", err)
 	}
-	txHash := msg.TxHash
+	txHash := msg.Tx[0].TxHash
+
 	log.Debugf("got message at %s (BXR node, ALL), txHash: %s", timeReceived, txHash)
 	if timeReceived.Before(s.timeToBeginComparison) {
 		s.leadNewHashes.Add(txHash)
 		return nil
 	}
 	if !s.excTxContents {
-		to := msg.To
+		to := msg.Tx[0].To
 		if !s.addresses.Empty() && to != nil && !s.addresses.Contains(*to) {
 			return nil
 		}
 
-		if price := msg.GasPrice; s.minGasPrice != nil && price != nil {
+		if price := msg.Tx[0].GasPrice; s.minGasPrice != nil && price != nil {
 			gasPrice, err := parseGasPrice(*price)
 			if err != nil {
 				return fmt.Errorf("cannot parse gas price %q for transaction %q: %v",

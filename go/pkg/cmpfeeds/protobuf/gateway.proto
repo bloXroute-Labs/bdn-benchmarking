@@ -13,7 +13,7 @@ message NewTxsRequest{
   string filters = 1;
 }
 
-message NewTxsReply{
+message Tx{
   string hash = 1;
   string subscriptionID = 2;
   string nonce = 3;
@@ -29,4 +29,9 @@ message NewTxsReply{
   string type = 13;
   string local_region = 14;
   string time = 15;
+  string rawTx = 16;
+}
+
+message NewTxsReply{
+  repeated Tx tx = 1;
 }
