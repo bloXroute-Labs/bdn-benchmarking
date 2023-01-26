@@ -291,17 +291,15 @@ func (s *TxWsGrpcCompareService) processFeedFromBX(data *message) error {
 			s.feedName, data.err)
 	}
 
-	timeReceived := time.Now()
-
 	var msg bxTxFeedResponse
 	if err := json.Unmarshal(data.bytes, &msg); err != nil {
 		return fmt.Errorf("failed to unmarshal message: %v", err)
 	}
 
 	txHash := msg.Params.Result.TxHash
-	log.Debugf("got message at %s (BXR node, ALL), txHash: %s", timeReceived, txHash)
+	log.Debugf("got message at %s (BXR node, ALL), txHash: %s", data.timeReceived, txHash)
 
-	if timeReceived.Before(s.timeToBeginComparison) {
+	if data.timeReceived.Before(s.timeToBeginComparison) {
 		s.leadNewHashes.Add(txHash)
 		return nil
 	}
@@ -328,15 +326,15 @@ func (s *TxWsGrpcCompareService) processFeedFromBX(data *message) error {
 
 	if entry, ok := s.seenHashes[txHash]; ok {
 		if entry.bxrTimeReceived.IsZero() {
-			entry.bxrTimeReceived = timeReceived
+			entry.bxrTimeReceived = data.timeReceived
 		}
-	} else if timeReceived.Before(s.timeToEndComparison) &&
+	} else if data.timeReceived.Before(s.timeToEndComparison) &&
 		!s.trailNewHashes.Contains(txHash) &&
 		!s.leadNewHashes.Contains(txHash) {
 
 		s.seenHashes[txHash] = &grpcHashEntry{
 			hash:            txHash,
-			bxrTimeReceived: timeReceived,
+			bxrTimeReceived: data.timeReceived,
 		}
 	} else {
 		s.trailNewHashes.Add(txHash)
@@ -350,15 +348,14 @@ func (s *TxWsGrpcCompareService) processFeedFromGRPC(data *message) error {
 		return fmt.Errorf("failed to read message from feed %q: %v", s.feedName, data.err)
 	}
 
-	timeReceived := time.Now()
 	var msg grpcFeedResponse
 	if err := json.Unmarshal(data.bytes, &msg); err != nil {
 		return fmt.Errorf("failed to unmarshal grpc message: %v", err)
 	}
 	txHash := msg.Tx[0].TxHash
 
-	log.Debugf("got message at %s (BXR node, ALL), txHash: %s", timeReceived, txHash)
-	if timeReceived.Before(s.timeToBeginComparison) {
+	log.Debugf("got message at %s (BXR node, ALL), txHash: %s", data.timeReceived, txHash)
+	if data.timeReceived.Before(s.timeToBeginComparison) {
 		s.leadNewHashes.Add(txHash)
 		return nil
 	}
@@ -383,14 +380,14 @@ func (s *TxWsGrpcCompareService) processFeedFromGRPC(data *message) error {
 	}
 	if entry, ok := s.seenHashes[txHash]; ok {
 		if entry.grpcBxrTimeReceived.IsZero() {
-			entry.grpcBxrTimeReceived = timeReceived
+			entry.grpcBxrTimeReceived = data.timeReceived
 		}
-	} else if timeReceived.Before(s.timeToEndComparison) &&
+	} else if data.timeReceived.Before(s.timeToEndComparison) &&
 		!s.trailNewHashes.Contains(txHash) &&
 		!s.leadNewHashes.Contains(txHash) {
 		s.seenHashes[txHash] = &grpcHashEntry{
 			hash:                txHash,
-			grpcBxrTimeReceived: timeReceived,
+			grpcBxrTimeReceived: data.timeReceived,
 		}
 	} else {
 		s.trailNewHashes.Add(txHash)
@@ -511,7 +508,7 @@ func (s *TxWsGrpcCompareService) stats(ignoreDelta int, verbose bool) string {
 			"Number of transactions received from websocket connection first: %d\n"+
 			"Number of transactions received from gRPC connection first: %d\n"+
 			"Percentage of transactions seen first from websocket connection: %d%%\n"+
-			"Average time difference for transactions received first from webscoket connection (us): %d\n"+
+			"Average time difference for transactions received first from websocket connection (us): %d\n"+
 			"Average time difference for transactions received first from gRPC connection (us): %d\n"+
 			"\nTotal Transactions summary:\n"+
 			"Total tx from ws connection: %d\n"+
@@ -587,10 +584,12 @@ func (s *TxWsGrpcCompareService) readFeedFromBX(
 
 	for {
 		var (
-			data, err = sub.NextMessage()
-			msg       = &message{
-				bytes: data,
-				err:   err,
+			data, err    = sub.NextMessage()
+			timeReceived = time.Now()
+			msg          = &message{
+				bytes:        data,
+				err:          err,
+				timeReceived: timeReceived,
 			}
 		)
 
@@ -647,6 +646,7 @@ func (s *TxWsGrpcCompareService) readFeedFromGRPC(ctx context.Context, wg *sync.
 	stream, err := client.NewTxs(callContext, &pb.NewTxsRequest{Filters: ""})
 	for {
 		data, err := stream.Recv()
+		timeReceived := time.Now()
 		if err != nil {
 			log.Errorf("error in recieve: %v", err)
 		}
@@ -657,8 +657,9 @@ func (s *TxWsGrpcCompareService) readFeedFromGRPC(ctx context.Context, wg *sync.
 			}
 			var (
 				msg = &message{
-					bytes: res,
-					err:   err,
+					bytes:        res,
+					err:          err,
+					timeReceived: timeReceived,
 				}
 			)
 

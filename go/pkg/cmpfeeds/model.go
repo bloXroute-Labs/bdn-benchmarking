@@ -5,9 +5,10 @@ import "time"
 type handler func() error
 
 type message struct {
-	hash  string
-	bytes []byte
-	err   error
+	hash         string
+	bytes        []byte
+	err          error
+	timeReceived time.Time
 }
 
 type hashEntry struct {
