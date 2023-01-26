@@ -403,10 +403,10 @@ func (s *TxWsGrpcCompareService) stats(ignoreDelta int, verbose bool) string {
 	const timestampFormat = "2006-01-02T15:04:05.000"
 
 	var (
-		txSeenByBothFeedsGatewayFirst          = 0
-		txSeenByBothFeedsGrpcGatewayFirst      = 0
-		txReceivedByGatewayFirstTotalDelta     = 0.0
-		txReceivedByGrpcGatewayFirstTotalDelta = 0.0
+		txSeenByBothFeedsGatewayFirst          = int64(0)
+		txSeenByBothFeedsGrpcGatewayFirst      = int64(0)
+		txReceivedByGatewayFirstTotalDelta     = int64(0)
+		txReceivedByGrpcGatewayFirstTotalDelta = int64(0)
 		newTxFromGatewayFeedFirst              = 0
 		newTxFromGrpcGatewayFeedFirst          = 0
 		totalTxFromGateway                     = 0
@@ -466,7 +466,7 @@ func (s *TxWsGrpcCompareService) stats(ignoreDelta int, verbose bool) string {
 				txHash,
 				gatewayTimeReceived.Format(timestampFormat),
 				grpcGatewayTimeReceived.Format(timestampFormat),
-				fmt.Sprintf("%d", timeReceivedDiff.Milliseconds()),
+				fmt.Sprintf("%d", timeReceivedDiff.Microseconds()),
 			}
 			if err := s.allHashesFile.Write(record); err != nil {
 				log.Errorf("cannot add txHash %q to all hashes file: %v", txHash, err)
@@ -477,29 +477,27 @@ func (s *TxWsGrpcCompareService) stats(ignoreDelta int, verbose bool) string {
 		case gatewayTimeReceived.Before(grpcGatewayTimeReceived):
 			newTxFromGatewayFeedFirst++
 			txSeenByBothFeedsGatewayFirst++
-			txReceivedByGatewayFirstTotalDelta += -timeReceivedDiff.Seconds()
+			txReceivedByGatewayFirstTotalDelta += -timeReceivedDiff.Microseconds()
 		case grpcGatewayTimeReceived.Before(gatewayTimeReceived):
 			newTxFromGrpcGatewayFeedFirst++
 			txSeenByBothFeedsGrpcGatewayFirst++
-			txReceivedByGrpcGatewayFirstTotalDelta += timeReceivedDiff.Seconds()
+			txReceivedByGrpcGatewayFirstTotalDelta += timeReceivedDiff.Microseconds()
 		}
 	}
 
 	var (
 		newTxSeenByBothFeeds                 = txSeenByBothFeedsGatewayFirst + txSeenByBothFeedsGrpcGatewayFirst
-		txReceivedByGatewayFirstAvgDelta     = 0
-		txReceivedByGrpcGatewayFirstAvgDelta = 0
+		txReceivedByGatewayFirstAvgDelta     = int64(0)
+		txReceivedByGrpcGatewayFirstAvgDelta = int64(0)
 		txPercentageSeenByGatewayFirst       = 0
 	)
 
 	if txSeenByBothFeedsGatewayFirst != 0 {
-		txReceivedByGatewayFirstAvgDelta = int(math.Round(
-			txReceivedByGatewayFirstTotalDelta / float64(txSeenByBothFeedsGatewayFirst) * 1000))
+		txReceivedByGatewayFirstAvgDelta = txReceivedByGatewayFirstTotalDelta / txSeenByBothFeedsGatewayFirst
 	}
 
 	if txSeenByBothFeedsGrpcGatewayFirst != 0 {
-		txReceivedByGrpcGatewayFirstAvgDelta = int(math.Round(
-			txReceivedByGrpcGatewayFirstTotalDelta / float64(txSeenByBothFeedsGrpcGatewayFirst) * 1000))
+		txReceivedByGrpcGatewayFirstAvgDelta = txReceivedByGrpcGatewayFirstTotalDelta / txSeenByBothFeedsGrpcGatewayFirst
 	}
 
 	if newTxSeenByBothFeeds != 0 {
@@ -513,8 +511,8 @@ func (s *TxWsGrpcCompareService) stats(ignoreDelta int, verbose bool) string {
 			"Number of transactions received from websocket connection first: %d\n"+
 			"Number of transactions received from gRPC connection first: %d\n"+
 			"Percentage of transactions seen first from websocket connection: %d%%\n"+
-			"Average time difference for transactions received first from webscoket connection (ms): %d\n"+
-			"Average time difference for transactions received first from gRPC connection (ms): %d\n"+
+			"Average time difference for transactions received first from webscoket connection (us): %d\n"+
+			"Average time difference for transactions received first from gRPC connection (us): %d\n"+
 			"\nTotal Transactions summary:\n"+
 			"Total tx from ws connection: %d\n"+
 			"Total tx from gRPC connection: %d\n"+
@@ -644,6 +642,8 @@ func (s *TxWsGrpcCompareService) readFeedFromGRPC(ctx context.Context, wg *sync.
 	client := pb.NewGatewayClient(conn)
 	callContext, cancel := context.WithTimeout(context.Background(), 24*time.Hour)
 	defer cancel()
+
+	log.Infof("Connection to %s established", uri)
 	stream, err := client.NewTxs(callContext, &pb.NewTxsRequest{Filters: ""})
 	for {
 		data, err := stream.Recv()
