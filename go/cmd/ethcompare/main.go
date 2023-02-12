@@ -78,7 +78,7 @@ func main() {
 			},
 			{
 				Name:  "txwsgrpc",
-				Usage: "compares stream of txs from ws vs grpc",
+				Usage: "compares stream of txs from gateway grpc vs gateway websocket",
 				Flags: []cli.Flag{
 					flags.Gateway,
 					flags.GatewayGrpc,
