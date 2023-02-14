@@ -218,11 +218,8 @@ func newSubTxFeedRequestBX(
 		options["include_from_blockchain"] = incFromBlockchain
 	}
 
-	if excTxContents {
-		options["include"] = []string{"tx_hash"}
-	} else {
-		options["include"] = []string{"tx_hash", "tx_contents"}
-	}
+	options["include"] = []string{}
+	options["filter"] = "{gas_price} >= 5000000000"
 
 	return NewRequest(id, "subscribe", []interface{}{
 		feedName, options,

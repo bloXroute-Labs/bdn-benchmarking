@@ -165,6 +165,9 @@ func (s *TxWsGrpcCompareService) Run(c *cli.Context) error {
 	s.feedName = c.String(flags.TxFeedName.Name)
 
 	readerGroup.Add(2)
+
+	go s.readFeedFromGRPC(ctx, &readerGroup, s.bxGrpcCh, c.String(flags.GatewayGrpc.Name))
+
 	if c.Bool(flags.UseCloudAPI.Name) {
 		go s.readFeedFromBX(
 			ctx,
@@ -188,8 +191,6 @@ func (s *TxWsGrpcCompareService) Run(c *cli.Context) error {
 			c.Bool(flags.UseGoGateway.Name),
 		)
 	}
-
-	go s.readFeedFromGRPC(ctx, &readerGroup, s.bxGrpcCh, c.String(flags.GatewayGrpc.Name))
 
 	handleGroup.Add(1)
 	go s.handleUpdates(ctx, &handleGroup)
@@ -348,35 +349,12 @@ func (s *TxWsGrpcCompareService) processFeedFromGRPC(data *message) error {
 		return fmt.Errorf("failed to read message from feed %q: %v", s.feedName, data.err)
 	}
 
-	var msg grpcFeedResponse
-	if err := json.Unmarshal(data.bytes, &msg); err != nil {
-		return fmt.Errorf("failed to unmarshal grpc message: %v", err)
-	}
-	txHash := msg.Tx[0].TxHash
+	txHash := data.hash
 
 	log.Debugf("got message at %s (BXR node, ALL), txHash: %s", data.timeReceived, txHash)
 	if data.timeReceived.Before(s.timeToBeginComparison) {
 		s.leadNewHashes.Add(txHash)
 		return nil
-	}
-	if !s.excTxContents {
-		to := msg.Tx[0].To
-		if !s.addresses.Empty() && to != nil && !s.addresses.Contains(*to) {
-			return nil
-		}
-
-		if price := msg.Tx[0].GasPrice; s.minGasPrice != nil && price != nil {
-			gasPrice, err := parseGasPrice(*price)
-			if err != nil {
-				return fmt.Errorf("cannot parse gas price %q for transaction %q: %v",
-					*price, txHash, err)
-			}
-
-			if float64(gasPrice) < *s.minGasPrice {
-				s.lowFeeHashes.Add(txHash)
-				return nil
-			}
-		}
 	}
 	if entry, ok := s.seenHashes[txHash]; ok {
 		if entry.grpcBxrTimeReceived.IsZero() {
@@ -643,7 +621,10 @@ func (s *TxWsGrpcCompareService) readFeedFromGRPC(ctx context.Context, wg *sync.
 	defer cancel()
 
 	log.Infof("Connection to %s established", uri)
-	stream, err := client.NewTxs(callContext, &pb.NewTxsRequest{Filters: ""})
+	stream, err := client.NewTxs(callContext, &pb.NewTxsRequest{Filters: "{gas_price} >= 5000000000"})
+	if err != nil {
+		log.Errorf("could not create newTxs %v", err)
+	}
 	for {
 		data, err := stream.Recv()
 		timeReceived := time.Now()
@@ -651,13 +632,9 @@ func (s *TxWsGrpcCompareService) readFeedFromGRPC(ctx context.Context, wg *sync.
 			log.Errorf("error in recieve: %v", err)
 		}
 		if data != nil {
-			res, err := json.Marshal(data)
-			if err != nil {
-				log.Errorf("error in marshal: %v", err)
-			}
 			var (
 				msg = &message{
-					bytes:        res,
+					hash:         data.Tx[0].Hash,
 					err:          err,
 					timeReceived: timeReceived,
 				}
