@@ -621,7 +621,7 @@ func (s *TxWsGrpcCompareService) readFeedFromGRPC(ctx context.Context, wg *sync.
 	defer cancel()
 
 	log.Infof("Connection to %s established", uri)
-	stream, err := client.NewTxs(callContext, &pb.NewTxsRequest{Filters: "{gas_price} >= 5000000000"})
+	stream, err := client.NewTxs(callContext, &pb.NewTxsRequest{Filters: ""})
 	if err != nil {
 		log.Errorf("could not create newTxs %v", err)
 	}

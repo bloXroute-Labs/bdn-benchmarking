@@ -219,7 +219,7 @@ func newSubTxFeedRequestBX(
 	}
 
 	options["include"] = []string{}
-	options["filter"] = "{gas_price} >= 5000000000"
+	options["filter"] = ""
 
 	return NewRequest(id, "subscribe", []interface{}{
 		feedName, options,
