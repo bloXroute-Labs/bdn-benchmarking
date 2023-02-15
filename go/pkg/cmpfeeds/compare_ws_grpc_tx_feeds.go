@@ -21,9 +21,9 @@ import (
 	"time"
 )
 
-// TxWsGrpcCompareService represents a service which compares transaction feeds time difference
+// TxGrpcWSCompareService represents a service which compares transaction feeds time difference
 // between Ws and gRPC connection.
-type TxWsGrpcCompareService struct {
+type TxGrpcWSCompareService struct {
 	handlers chan handler
 	bxCh     chan *message
 	bxGrpcCh chan *message
@@ -48,10 +48,10 @@ type TxWsGrpcCompareService struct {
 	missingHashesFile *bufio.Writer
 }
 
-// NewTxWsGrpcCompareService creates and initializes TxWsGrpcCompareService instance.
-func NewTxWsGrpcCompareService() *TxWsGrpcCompareService {
+// NewTxWsGrpcCompareService creates and initializes TxGrpcWSCompareService instance.
+func NewTxWsGrpcCompareService() *TxGrpcWSCompareService {
 	const bufSize = 8192
-	return &TxWsGrpcCompareService{
+	return &TxGrpcWSCompareService{
 		handlers:        make(chan handler),
 		bxCh:            make(chan *message),
 		bxGrpcCh:        make(chan *message),
@@ -64,8 +64,8 @@ func NewTxWsGrpcCompareService() *TxWsGrpcCompareService {
 	}
 }
 
-// Run is an entry point to the TxWsGrpcCompareService.
-func (s *TxWsGrpcCompareService) Run(c *cli.Context) error {
+// Run is an entry point to the TxGrpcWSCompareService.
+func (s *TxGrpcWSCompareService) Run(c *cli.Context) error {
 	if mgp := c.Float64(flags.MinGasPrice.Name); mgp != 0.0 {
 		s.minGasPrice = &mgp
 	}
@@ -243,7 +243,7 @@ func (s *TxWsGrpcCompareService) Run(c *cli.Context) error {
 	return nil
 }
 
-func (s *TxWsGrpcCompareService) handleUpdates(
+func (s *TxGrpcWSCompareService) handleUpdates(
 	ctx context.Context,
 	wg *sync.WaitGroup,
 ) {
@@ -286,7 +286,7 @@ func (s *TxWsGrpcCompareService) handleUpdates(
 	}
 }
 
-func (s *TxWsGrpcCompareService) processFeedFromBX(data *message) error {
+func (s *TxGrpcWSCompareService) processFeedFromBX(data *message) error {
 	if data.err != nil {
 		return fmt.Errorf("failed to read message from feed %q: %v",
 			s.feedName, data.err)
@@ -344,7 +344,7 @@ func (s *TxWsGrpcCompareService) processFeedFromBX(data *message) error {
 	return nil
 }
 
-func (s *TxWsGrpcCompareService) processFeedFromGRPC(data *message) error {
+func (s *TxGrpcWSCompareService) processFeedFromGRPC(data *message) error {
 	if data.err != nil {
 		return fmt.Errorf("failed to read message from feed %q: %v", s.feedName, data.err)
 	}
@@ -374,7 +374,7 @@ func (s *TxWsGrpcCompareService) processFeedFromGRPC(data *message) error {
 	return nil
 }
 
-func (s *TxWsGrpcCompareService) stats(ignoreDelta int, verbose bool) string {
+func (s *TxGrpcWSCompareService) stats(ignoreDelta int, verbose bool) string {
 	const timestampFormat = "2006-01-02T15:04:05.000"
 
 	var (
@@ -464,7 +464,7 @@ func (s *TxWsGrpcCompareService) stats(ignoreDelta int, verbose bool) string {
 		newTxSeenByBothFeeds                 = txSeenByBothFeedsGatewayFirst + txSeenByBothFeedsGrpcGatewayFirst
 		txReceivedByGatewayFirstAvgDelta     = int64(0)
 		txReceivedByGrpcGatewayFirstAvgDelta = int64(0)
-		txPercentageSeenByGatewayFirst       = 0
+		txPercentageSeenByGatewayFirst       = float64(0)
 	)
 
 	if txSeenByBothFeedsGatewayFirst != 0 {
@@ -476,41 +476,43 @@ func (s *TxWsGrpcCompareService) stats(ignoreDelta int, verbose bool) string {
 	}
 
 	if newTxSeenByBothFeeds != 0 {
-		txPercentageSeenByGatewayFirst = int(
-			(float64(txSeenByBothFeedsGatewayFirst) / float64(newTxSeenByBothFeeds)) * 100)
+		txPercentageSeenByGatewayFirst = float64(txSeenByBothFeedsGrpcGatewayFirst) / float64(newTxSeenByBothFeeds)
 	}
 
+	var timeAverage = txPercentageSeenByGatewayFirst*float64(txReceivedByGrpcGatewayFirstAvgDelta) - (1-txPercentageSeenByGatewayFirst)*float64(txReceivedByGatewayFirstAvgDelta)
 	results := fmt.Sprintf(
 		"\nAnalysis of Transactions received on both feeds:\n"+
 			"Number of transactions: %d\n"+
-			"Number of transactions received from websocket connection first: %d\n"+
 			"Number of transactions received from gRPC connection first: %d\n"+
-			"Percentage of transactions seen first from websocket connection: %d%%\n"+
-			"Average time difference for transactions received first from websocket connection (us): %d\n"+
-			"Average time difference for transactions received first from gRPC connection (us): %d\n"+
+			"Number of transactions received from websocket connection first: %d\n"+
+			"Percentage of transactions seen first from gRPC connection: %.2f%%\n"+
+			"Average time difference for transactions received first from gRPC connection (us):: %d\n"+
+			"Average time difference for transactions received first from websocket connection (us):: %d\n"+
+			"Final calculatoin (us): %.2f\n"+
 			"\nTotal Transactions summary:\n"+
-			"Total tx from ws connection: %d\n"+
 			"Total tx from gRPC connection: %d\n"+
+			"Total tx from ws connection: %d\n"+
 			"Number of low fee tx ignored: %d\n",
 
 		newTxSeenByBothFeeds,
-		txSeenByBothFeedsGatewayFirst,
 		txSeenByBothFeedsGrpcGatewayFirst,
+		txSeenByBothFeedsGatewayFirst,
 		txPercentageSeenByGatewayFirst,
-		txReceivedByGatewayFirstAvgDelta,
 		txReceivedByGrpcGatewayFirstAvgDelta,
-		totalTxFromGateway,
+		txReceivedByGatewayFirstAvgDelta,
+		timeAverage,
 		totalTxFromGrpcGateway,
+		totalTxFromGateway,
 		len(s.lowFeeHashes))
 
 	verboseResults := fmt.Sprintf(
 		"Number of high delta tx ignored: %d\n"+
-			"Number of new transactions received first from gateway: %d\n"+
-			"Number of new transactions received first from node: %d\n"+
+			"Number of new transactions received first from gRPC connection: %d\n"+
+			"Number of new transactions received first from websocket connection: %d\n"+
 			"Total number of transactions seen: %d\n",
 		len(s.highDeltaHashes),
-		newTxFromGatewayFeedFirst,
 		newTxFromGrpcGatewayFeedFirst,
+		newTxFromGatewayFeedFirst,
 		newTxFromGrpcGatewayFeedFirst+newTxFromGatewayFeedFirst,
 	)
 
@@ -521,7 +523,7 @@ func (s *TxWsGrpcCompareService) stats(ignoreDelta int, verbose bool) string {
 	return results
 }
 
-func (s *TxWsGrpcCompareService) readFeedFromBX(
+func (s *TxGrpcWSCompareService) readFeedFromBX(
 	ctx context.Context,
 	wg *sync.WaitGroup,
 	out chan<- *message,
@@ -579,7 +581,7 @@ func (s *TxWsGrpcCompareService) readFeedFromBX(
 	}
 }
 
-func (s *TxWsGrpcCompareService) clearTrailNewHashes() {
+func (s *TxGrpcWSCompareService) clearTrailNewHashes() {
 	done := make(chan struct{})
 	go func() {
 		s.handlers <- func() error {
@@ -591,7 +593,7 @@ func (s *TxWsGrpcCompareService) clearTrailNewHashes() {
 	<-done
 }
 
-func (s *TxWsGrpcCompareService) drainChannels() {
+func (s *TxGrpcWSCompareService) drainChannels() {
 	done := make(chan struct{})
 	go func() {
 		for len(s.hashes) > 0 {
@@ -607,7 +609,7 @@ func (s *TxWsGrpcCompareService) drainChannels() {
 	<-done
 }
 
-func (s *TxWsGrpcCompareService) readFeedFromGRPC(ctx context.Context, wg *sync.WaitGroup, out chan<- *message, uri string) {
+func (s *TxGrpcWSCompareService) readFeedFromGRPC(ctx context.Context, wg *sync.WaitGroup, out chan<- *message, uri string) {
 	defer wg.Done()
 
 	log.Infof("Initiating connection to GRPC %v", uri)
