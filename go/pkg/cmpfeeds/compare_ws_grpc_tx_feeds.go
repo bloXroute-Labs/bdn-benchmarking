@@ -488,7 +488,7 @@ func (s *TxGrpcWSCompareService) stats(ignoreDelta int, verbose bool) string {
 			"Percentage of transactions seen first from gRPC connection: %.2f%%\n"+
 			"Average time difference for transactions received first from gRPC connection (us):: %d\n"+
 			"Average time difference for transactions received first from websocket connection (us):: %d\n"+
-			"Final calculatoin (us): %.2f\n"+
+			"Final calculation (us): %.2f\n"+
 			"\nTotal Transactions summary:\n"+
 			"Total tx from gRPC connection: %d\n"+
 			"Total tx from ws connection: %d\n"+
