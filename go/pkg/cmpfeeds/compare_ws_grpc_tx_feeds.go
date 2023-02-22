@@ -486,8 +486,8 @@ func (s *TxGrpcWSCompareService) stats(ignoreDelta int, verbose bool) string {
 			"Number of transactions received from gRPC connection first: %d\n"+
 			"Number of transactions received from websocket connection first: %d\n"+
 			"Percentage of transactions seen first from gRPC connection: %.2f%%\n"+
-			"Average time difference for transactions received first from gRPC connection (us):: %d\n"+
-			"Average time difference for transactions received first from websocket connection (us):: %d\n"+
+			"Average time difference for transactions received first from gRPC connection (us): %d\n"+
+			"Average time difference for transactions received first from websocket connection (us): %d\n"+
 			"Final calculation (us): %.2f\n"+
 			"\nTotal Transactions summary:\n"+
 			"Total tx from gRPC connection: %d\n"+
@@ -497,7 +497,7 @@ func (s *TxGrpcWSCompareService) stats(ignoreDelta int, verbose bool) string {
 		newTxSeenByBothFeeds,
 		txSeenByBothFeedsGrpcGatewayFirst,
 		txSeenByBothFeedsGatewayFirst,
-		txPercentageSeenByGatewayFirst,
+		txPercentageSeenByGatewayFirst*100,
 		txReceivedByGrpcGatewayFirstAvgDelta,
 		txReceivedByGatewayFirstAvgDelta,
 		timeAverage,
