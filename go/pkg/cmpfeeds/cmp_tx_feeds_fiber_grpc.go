@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"encoding/csv"
-	"encoding/json"
 	"fmt"
 	fiber "github.com/chainbound/fiber-go"
 	log "github.com/sirupsen/logrus"
@@ -273,36 +272,26 @@ func (s *TxFeedsCompareFiberGrpcService) handleUpdates(
 
 func (s *TxFeedsCompareFiberGrpcService) processFeedFromBX(data *message) error {
 	if data.err != nil {
-		return fmt.Errorf("failed to read message from feed %q: %v",
-			s.feedName, data.err)
+		return fmt.Errorf("failed to read message from feed %q: %v", s.feedName, data.err)
 	}
 
-	timeReceived := time.Now()
+	txHash := data.hash
 
-	var msg bxTxFeedResponse
-	if err := json.Unmarshal(data.bytes, &msg); err != nil {
-		return fmt.Errorf("failed to unmarshal message: %v", err)
-	}
-
-	txHash := msg.Params.Result.TxHash
-	log.Debugf("got message at %s (BXR node, ALL), txHash: %s", timeReceived, txHash)
-
-	if timeReceived.Before(s.timeToBeginComparison) {
+	log.Debugf("got message at %s (BXR node, ALL), txHash: %s", data.timeReceived, txHash)
+	if data.timeReceived.Before(s.timeToBeginComparison) {
 		s.leadNewHashes.Add(txHash)
 		return nil
 	}
-
 	if entry, ok := s.seenHashes[txHash]; ok {
 		if entry.bxrTimeReceived.IsZero() {
-			entry.bxrTimeReceived = timeReceived
+			entry.bxrTimeReceived = data.timeReceived
 		}
-	} else if timeReceived.Before(s.timeToEndComparison) &&
+	} else if data.timeReceived.Before(s.timeToEndComparison) &&
 		!s.trailNewHashes.Contains(txHash) &&
 		!s.leadNewHashes.Contains(txHash) {
-
 		s.seenHashes[txHash] = &hashEntry{
 			hash:            txHash,
-			bxrTimeReceived: timeReceived,
+			bxrTimeReceived: data.timeReceived,
 		}
 	} else {
 		s.trailNewHashes.Add(txHash)
@@ -350,10 +339,10 @@ func (s *TxFeedsCompareFiberGrpcService) stats(ignoreDelta int, verbose bool) st
 	const timestampFormat = "2006-01-02T15:04:05.000"
 
 	var (
-		txSeenByBothFeedsGatewayFirst      = 0
-		txSeenByBothFeedsFiberFirst        = 0
-		txReceivedByGatewayFirstTotalDelta = 0.0
-		txReceivedByFiberFirstTotalDelta   = 0.0
+		txSeenByBothFeedsGatewayFirst      = int64(0)
+		txSeenByBothFeedsFiberFirst        = int64(0)
+		txReceivedByGatewayFirstTotalDelta = int64(0)
+		txReceivedByFiberFirstTotalDelta   = int64(0)
 		newTxFromGatewayFeedFirst          = 0
 		newTxFromFiberFeedFirst            = 0
 		totalTxFromGateway                 = 0
@@ -424,59 +413,60 @@ func (s *TxFeedsCompareFiberGrpcService) stats(ignoreDelta int, verbose bool) st
 		case gatewayTimeReceived.Before(fiberTimeReceived):
 			newTxFromGatewayFeedFirst++
 			txSeenByBothFeedsGatewayFirst++
-			txReceivedByGatewayFirstTotalDelta += -timeReceivedDiff.Seconds()
+			txReceivedByGatewayFirstTotalDelta += -timeReceivedDiff.Microseconds()
 		case fiberTimeReceived.Before(gatewayTimeReceived):
 			newTxFromFiberFeedFirst++
 			txSeenByBothFeedsFiberFirst++
-			txReceivedByFiberFirstTotalDelta += timeReceivedDiff.Seconds()
+			txReceivedByFiberFirstTotalDelta += timeReceivedDiff.Microseconds()
 		}
 	}
 
 	var (
 		newTxSeenByBothFeeds = txSeenByBothFeedsGatewayFirst +
 			txSeenByBothFeedsFiberFirst
-		txReceivedByGatewayFirstAvgDelta = 0
-		txReceivedByFiberFirstAvgDelta   = 0
-		txPercentageSeenByGatewayFirst   = 0
+		txReceivedByGatewayFirstAvgDelta = int64(0)
+		txReceivedByFiberFirstAvgDelta   = int64(0)
+		txPercentageSeenByGatewayFirst   = float64(0)
 	)
 
 	if txSeenByBothFeedsGatewayFirst != 0 {
-		txReceivedByGatewayFirstAvgDelta = int(math.Round(
-			txReceivedByGatewayFirstTotalDelta / float64(txSeenByBothFeedsGatewayFirst) * 1000))
+		txReceivedByGatewayFirstAvgDelta = txReceivedByGatewayFirstTotalDelta / txSeenByBothFeedsGatewayFirst
 	}
 
 	if txSeenByBothFeedsFiberFirst != 0 {
-		txReceivedByFiberFirstAvgDelta = int(math.Round(
-			txReceivedByFiberFirstTotalDelta / float64(txSeenByBothFeedsFiberFirst) * 1000))
+		txReceivedByFiberFirstAvgDelta = txReceivedByFiberFirstTotalDelta / txSeenByBothFeedsFiberFirst
 	}
 
 	if newTxSeenByBothFeeds != 0 {
-		txPercentageSeenByGatewayFirst = int(
-			(float64(txSeenByBothFeedsGatewayFirst) / float64(newTxSeenByBothFeeds)) * 100)
+		txPercentageSeenByGatewayFirst = float64(txSeenByBothFeedsGatewayFirst) / float64(newTxSeenByBothFeeds)
 	}
 
+	var timeAverage = txPercentageSeenByGatewayFirst*float64(txReceivedByGatewayFirstAvgDelta) - (1-txPercentageSeenByGatewayFirst)*float64(txReceivedByFiberFirstAvgDelta)
 	results := fmt.Sprintf(
 		"\nAnalysis of Transactions received on both feeds:\n"+
 			"Number of transactions: %d\n"+
-			"Number of transactions received from Gateway first: %d\n"+
+			"Number of transactions received from gRPC connection first: %d\n"+
 			"Number of transactions received from Fiber first: %d\n"+
-			"Percentage of transactions seen first from gateway: %d%%\n"+
-			"Average time difference for transactions received first from gateway (ms): %d\n"+
-			"Average time difference for transactions received first from Fiber (ms): %d\n"+
+			"Percentage of transactions seen first from gRPC connection: %.2f%%\n"+
+			"Average time difference for transactions received first from gRPC connection (us): %d\n"+
+			"Average time difference for transactions received first from Fiber (us): %d\n"+
+			"Final calculation (us): %.2f\n"+
 			"\nTotal Transactions summary:\n"+
-			"Total tx from gateway: %d\n"+
-			"Total tx from fiber node: %d\n"+
+			"Total tx from gRPC connection: %d\n"+
+			"Total tx from Fiber: %d\n"+
 			"Number of low fee tx ignored: %d\n",
 
 		newTxSeenByBothFeeds,
 		txSeenByBothFeedsGatewayFirst,
 		txSeenByBothFeedsFiberFirst,
-		txPercentageSeenByGatewayFirst,
+		txPercentageSeenByGatewayFirst*100,
 		txReceivedByGatewayFirstAvgDelta,
 		txReceivedByFiberFirstAvgDelta,
+		timeAverage,
 		totalTxFromGateway,
 		totalTxFromFiber,
-		len(s.lowFeeHashes))
+		len(s.lowFeeHashes),
+	)
 
 	verboseResults := fmt.Sprintf(
 		"Number of high delta tx ignored: %d\n"+
