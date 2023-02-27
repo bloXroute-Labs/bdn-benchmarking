@@ -450,7 +450,7 @@ func (s *TxFeedsCompareFiberGrpcService) stats(ignoreDelta int, verbose bool) st
 			"Percentage of transactions seen first from gRPC connection: %.2f%%\n"+
 			"Average time difference for transactions received first from gRPC connection (s): %f\n"+
 			"Average time difference for transactions received first from Fiber (s): %f\n"+
-			"Final calculation (s): %.2f\n"+
+			"Gateway is faster then Fiber by (s): %.2f\n"+
 			"\nTotal Transactions summary:\n"+
 			"Total tx from gRPC connection: %d\n"+
 			"Total tx from Fiber: %d\n"+
@@ -519,7 +519,6 @@ func (s *TxFeedsCompareFiberGrpcService) readFeedFromBX(
 			var (
 				msg = &message{
 					hash:         data.Tx[0].Hash,
-					err:          err,
 					timeReceived: timeReceived,
 				}
 			)
@@ -567,8 +566,10 @@ func (s *TxFeedsCompareFiberGrpcService) readFeedFromFiber(
 	// Listen for incoming transactions
 	for tx := range ch {
 		var (
+			timeReceived := time.Now()
 			msg = &message{
 				hash: tx.Hash.String(),
+				timeReceived: timeReceived,
 			}
 		)
 
