@@ -9,19 +9,21 @@ import (
 	fiber "github.com/chainbound/fiber-go"
 	log "github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"math"
 	"os"
 	"performance/internal/pkg/flags"
 	"performance/internal/pkg/utils"
-	"performance/internal/pkg/ws"
+	pb "performance/pkg/cmpfeeds/protobuf"
 	"strings"
 	"sync"
 	"time"
 )
 
-// TxFeedsCompareFiberService represents a service which compares transaction feeds time difference
+// TxFeedsCompareFiberGrpcService represents a service which compares transaction feeds time difference
 // between fiber gateway and BX cloud services.
-type TxFeedsCompareFiberService struct {
+type TxFeedsCompareFiberGrpcService struct {
 	handlers chan handler
 	fiberCh  chan *message
 	bxCh     chan *message
@@ -46,10 +48,10 @@ type TxFeedsCompareFiberService struct {
 	missingHashesFile *bufio.Writer
 }
 
-// NewTxFeedsCompareFiberService creates and initializes TxFeedsCompareFiberService instance.
-func NewTxFeedsCompareFiberService() *TxFeedsCompareFiberService {
+// NewTxFeedsCompareFiberGrpcService creates and initializes TxFeedsCompareFiberGrpcService instance.
+func NewTxFeedsCompareFiberGrpcService() *TxFeedsCompareFiberGrpcService {
 	const bufSize = 8192
-	return &TxFeedsCompareFiberService{
+	return &TxFeedsCompareFiberGrpcService{
 		handlers:        make(chan handler),
 		bxCh:            make(chan *message),
 		fiberCh:         make(chan *message),
@@ -62,8 +64,8 @@ func NewTxFeedsCompareFiberService() *TxFeedsCompareFiberService {
 	}
 }
 
-// Run is an entry point to the TxFeedsCompareFiberService.
-func (s *TxFeedsCompareFiberService) Run(c *cli.Context) error {
+// Run is an entry point to the TxFeedsCompareFiberGrpcService.
+func (s *TxFeedsCompareFiberGrpcService) Run(c *cli.Context) error {
 	if mgp := c.Float64(flags.MinGasPrice.Name); mgp != 0.0 {
 		s.minGasPrice = &mgp
 	}
@@ -163,29 +165,12 @@ func (s *TxFeedsCompareFiberService) Run(c *cli.Context) error {
 	s.feedName = c.String(flags.TxFeedName.Name)
 
 	readerGroup.Add(2)
-	if c.Bool(flags.UseCloudAPI.Name) {
-		go s.readFeedFromBX(
-			ctx,
-			&readerGroup,
-			s.bxCh,
-			c.String(flags.CloudAPIWSURI.Name),
-			c.String(flags.AuthHeader.Name),
-			c.Bool(flags.ExcludeDuplicates.Name),
-			c.Bool(flags.ExcludeFromBlockchain.Name),
-			false,
-		)
-	} else {
-		go s.readFeedFromBX(
-			ctx,
-			&readerGroup,
-			s.bxCh,
-			c.String(flags.Gateway.Name),
-			c.String(flags.AuthHeader.Name),
-			c.Bool(flags.ExcludeDuplicates.Name),
-			c.Bool(flags.ExcludeFromBlockchain.Name),
-			c.Bool(flags.UseGoGateway.Name),
-		)
-	}
+	go s.readFeedFromBX(
+		ctx,
+		&readerGroup,
+		s.bxCh,
+		c.String(flags.Gateway.Name),
+	)
 
 	go s.readFeedFromFiber(
 		ctx,
@@ -243,7 +228,7 @@ func (s *TxFeedsCompareFiberService) Run(c *cli.Context) error {
 	return nil
 }
 
-func (s *TxFeedsCompareFiberService) handleUpdates(
+func (s *TxFeedsCompareFiberGrpcService) handleUpdates(
 	ctx context.Context,
 	wg *sync.WaitGroup,
 ) {
@@ -286,7 +271,7 @@ func (s *TxFeedsCompareFiberService) handleUpdates(
 	}
 }
 
-func (s *TxFeedsCompareFiberService) processFeedFromBX(data *message) error {
+func (s *TxFeedsCompareFiberGrpcService) processFeedFromBX(data *message) error {
 	if data.err != nil {
 		return fmt.Errorf("failed to read message from feed %q: %v",
 			s.feedName, data.err)
@@ -326,7 +311,7 @@ func (s *TxFeedsCompareFiberService) processFeedFromBX(data *message) error {
 	return nil
 }
 
-func (s *TxFeedsCompareFiberService) processFeedFromFiber(data *message) error {
+func (s *TxFeedsCompareFiberGrpcService) processFeedFromFiber(data *message) error {
 	if data.err != nil {
 		return fmt.Errorf("failed to read message from feed %q: %v",
 			s.feedName, data.err)
@@ -361,7 +346,7 @@ func (s *TxFeedsCompareFiberService) processFeedFromFiber(data *message) error {
 	return nil
 }
 
-func (s *TxFeedsCompareFiberService) stats(ignoreDelta int, verbose bool) string {
+func (s *TxFeedsCompareFiberGrpcService) stats(ignoreDelta int, verbose bool) string {
 	const timestampFormat = "2006-01-02T15:04:05.000"
 
 	var (
@@ -511,65 +496,54 @@ func (s *TxFeedsCompareFiberService) stats(ignoreDelta int, verbose bool) string
 	return results
 }
 
-func (s *TxFeedsCompareFiberService) readFeedFromBX(
+func (s *TxFeedsCompareFiberGrpcService) readFeedFromBX(
 	ctx context.Context,
 	wg *sync.WaitGroup,
 	out chan<- *message,
 	uri string,
-	authHeader string,
-	excDuplicates bool,
-	excFromBlockchain bool,
-	useGoGateway bool,
 ) {
 	defer wg.Done()
 
-	log.Infof("Initiating connection to: %s", uri)
-	conn, err := ws.NewConnection(uri, authHeader)
+	log.Infof("Initiating connection to GRPC %v", uri)
+
+	conn, err := grpc.Dial(uri, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		log.Errorf("cannot establish connection to %s: %v", uri, err)
-		return
+		log.Fatalf("failed to connect: %v", err)
 	}
+	client := pb.NewGatewayClient(conn)
+	callContext, cancel := context.WithTimeout(context.Background(), 24*time.Hour)
+	defer cancel()
+
 	log.Infof("Connection to %s established", uri)
-
-	defer func() {
-		if err := conn.Close(); err != nil {
-			log.Errorf("cannot close socket connection to %s: %v", uri, err)
-		}
-	}()
-
-	sub, err := conn.SubscribeTxFeedBX(1, s.feedName, s.excTxContents, !excDuplicates,
-		!excFromBlockchain, useGoGateway)
+	stream, err := client.NewTxs(callContext, &pb.NewTxsRequest{Filters: ""})
 	if err != nil {
-		log.Errorf("cannot subscribe to feed %q: %v", s.feedName, err)
-		return
+		log.Errorf("could not create newTxs %v", err)
 	}
-
-	defer func() {
-		if err := sub.Unsubscribe(); err != nil {
-			log.Errorf("cannot unsubscribe from feed %q: %v", s.feedName, err)
-		}
-	}()
-
 	for {
-		var (
-			data, err    = sub.NextMessage()
-			timeReceived = time.Now()
-			msg          = &message{
-				bytes:        data,
-				err:          err,
-				timeReceived: timeReceived,
-			}
-		)
+		data, err := stream.Recv()
+		timeReceived := time.Now()
+		if err != nil {
+			log.Errorf("error in recieve: %v", err)
+		}
+		if data != nil {
+			var (
+				msg = &message{
+					hash:         data.Tx[0].Hash,
+					err:          err,
+					timeReceived: timeReceived,
+				}
+			)
 
-		select {
-		case <-ctx.Done():
-			return
-		case out <- msg:
+			select {
+			case <-ctx.Done():
+				return
+			case out <- msg:
+			}
 		}
 	}
 }
 
-func (s *TxFeedsCompareFiberService) readFeedFromFiber(
+func (s *TxFeedsCompareFiberGrpcService) readFeedFromFiber(
 	ctx context.Context,
 	out chan<- *message,
 	uri string,
@@ -603,10 +577,8 @@ func (s *TxFeedsCompareFiberService) readFeedFromFiber(
 	// Listen for incoming transactions
 	for tx := range ch {
 		var (
-			timeReceived = time.Now()
-			msg          = &message{
-				hash:         tx.Hash.String(),
-				timeReceived: timeReceived,
+			msg = &message{
+				hash: tx.Hash.String(),
 			}
 		)
 
@@ -618,7 +590,7 @@ func (s *TxFeedsCompareFiberService) readFeedFromFiber(
 	}
 }
 
-func (s *TxFeedsCompareFiberService) clearTrailNewHashes() {
+func (s *TxFeedsCompareFiberGrpcService) clearTrailNewHashes() {
 	done := make(chan struct{})
 	go func() {
 		s.handlers <- func() error {

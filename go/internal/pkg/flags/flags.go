@@ -156,4 +156,12 @@ var (
 		Usage: "Time (sec) to sleep between two consecutive groups.",
 		Value: 30,
 	}
+	FiberUri = &cli.StringFlag{
+		Name:  "fiber-uri",
+		Usage: "Fiber URI",
+	}
+	FiberAPIKey = &cli.StringFlag{
+		Name:  "fiber-api-key",
+		Usage: "Fiber API key",
+	}
 )
