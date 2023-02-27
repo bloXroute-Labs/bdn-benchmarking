@@ -339,10 +339,10 @@ func (s *TxFeedsCompareFiberGrpcService) stats(ignoreDelta int, verbose bool) st
 	const timestampFormat = "2006-01-02T15:04:05.000"
 
 	var (
-		txSeenByBothFeedsGatewayFirst      = int64(0)
-		txSeenByBothFeedsFiberFirst        = int64(0)
-		txReceivedByGatewayFirstTotalDelta = int64(0)
-		txReceivedByFiberFirstTotalDelta   = int64(0)
+		txSeenByBothFeedsGatewayFirst      = float64(0)
+		txSeenByBothFeedsFiberFirst        = float64(0)
+		txReceivedByGatewayFirstTotalDelta = float64(0)
+		txReceivedByFiberFirstTotalDelta   = float64(0)
 		newTxFromGatewayFeedFirst          = 0
 		newTxFromFiberFeedFirst            = 0
 		totalTxFromGateway                 = 0
@@ -413,19 +413,19 @@ func (s *TxFeedsCompareFiberGrpcService) stats(ignoreDelta int, verbose bool) st
 		case gatewayTimeReceived.Before(fiberTimeReceived):
 			newTxFromGatewayFeedFirst++
 			txSeenByBothFeedsGatewayFirst++
-			txReceivedByGatewayFirstTotalDelta += -timeReceivedDiff.Microseconds()
+			txReceivedByGatewayFirstTotalDelta += -timeReceivedDiff.Seconds()
 		case fiberTimeReceived.Before(gatewayTimeReceived):
 			newTxFromFiberFeedFirst++
 			txSeenByBothFeedsFiberFirst++
-			txReceivedByFiberFirstTotalDelta += timeReceivedDiff.Microseconds()
+			txReceivedByFiberFirstTotalDelta += timeReceivedDiff.Seconds()
 		}
 	}
 
 	var (
 		newTxSeenByBothFeeds = txSeenByBothFeedsGatewayFirst +
 			txSeenByBothFeedsFiberFirst
-		txReceivedByGatewayFirstAvgDelta = int64(0)
-		txReceivedByFiberFirstAvgDelta   = int64(0)
+		txReceivedByGatewayFirstAvgDelta = float64(0)
+		txReceivedByFiberFirstAvgDelta   = float64(0)
 		txPercentageSeenByGatewayFirst   = float64(0)
 	)
 
@@ -444,13 +444,13 @@ func (s *TxFeedsCompareFiberGrpcService) stats(ignoreDelta int, verbose bool) st
 	var timeAverage = txPercentageSeenByGatewayFirst*float64(txReceivedByGatewayFirstAvgDelta) - (1-txPercentageSeenByGatewayFirst)*float64(txReceivedByFiberFirstAvgDelta)
 	results := fmt.Sprintf(
 		"\nAnalysis of Transactions received on both feeds:\n"+
-			"Number of transactions: %d\n"+
-			"Number of transactions received from gRPC connection first: %d\n"+
-			"Number of transactions received from Fiber first: %d\n"+
+			"Number of transactions: %f\n"+
+			"Number of transactions received from gRPC connection first: %f\n"+
+			"Number of transactions received from Fiber first: %f\n"+
 			"Percentage of transactions seen first from gRPC connection: %.2f%%\n"+
-			"Average time difference for transactions received first from gRPC connection (us): %d\n"+
-			"Average time difference for transactions received first from Fiber (us): %d\n"+
-			"Final calculation (us): %.2f\n"+
+			"Average time difference for transactions received first from gRPC connection (s): %f\n"+
+			"Average time difference for transactions received first from Fiber (s): %f\n"+
+			"Final calculation (s): %.2f\n"+
 			"\nTotal Transactions summary:\n"+
 			"Total tx from gRPC connection: %d\n"+
 			"Total tx from Fiber: %d\n"+
