@@ -5,15 +5,30 @@ import "time"
 type handler func() error
 
 type message struct {
-	hash  string
-	bytes []byte
-	err   error
+	hash         string
+	bytes        []byte
+	err          error
+	timeReceived time.Time
 }
 
 type hashEntry struct {
 	ethTimeReceived time.Time
 	bxrTimeReceived time.Time
 	hash            string
+}
+
+type grpcHashEntry struct {
+	grpcBxrTimeReceived time.Time
+	bxrTimeReceived     time.Time
+	hash                string
+}
+
+type grpcFeedResponse struct {
+	Tx []struct {
+		TxHash   string  `json:"hash"`
+		GasPrice *string `json:"gas_price"`
+		To       *string `json:"to"`
+	} `json:"tx"`
 }
 
 type ethTxFeedResponse struct {
