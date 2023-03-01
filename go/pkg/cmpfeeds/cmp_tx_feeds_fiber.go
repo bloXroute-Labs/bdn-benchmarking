@@ -56,6 +56,7 @@ func NewTxFeedsCompareFiberService() *TxFeedsCompareFiberService {
 		handlers:        make(chan handler),
 		bxCh:            make(chan *message),
 		fiberCh:         make(chan *message),
+		bxBlockCh:       make(chan *message),
 		hashes:          make(chan string, bufSize),
 		lowFeeHashes:    utils.NewHashSet(),
 		highDeltaHashes: utils.NewHashSet(),
@@ -119,7 +120,7 @@ func (s *TxFeedsCompareFiberService) Run(c *cli.Context) error {
 			s.allHashesFile = csv.NewWriter(file)
 
 			if err := s.allHashesFile.Write([]string{
-				"TxHash", "BloXRoute Time", "Fiber Time", "Time Diff",
+				"TxHash", "BloXRoute Time", "Fiber Time", "Time Diff", "Mined In The Block",
 			}); err != nil {
 				return fmt.Errorf("cannot write CSV header of file %q: %v", fileName, err)
 			}
@@ -292,11 +293,12 @@ func (s *TxFeedsCompareFiberService) handleUpdates(
 				}
 			case data, ok := <-s.bxBlockCh:
 				if !ok {
+					fmt.Printf("failed to get data from bxblockch %v", data)
 					continue
 				}
 
 				if err := s.processBlockFeedFromBX(data); err != nil {
-					log.Errorf("error: %v", err)
+					fmt.Printf("error: %v", err)
 				}
 			default:
 				break
@@ -319,6 +321,9 @@ func (s *TxFeedsCompareFiberService) processFeedFromBX(data *message) error {
 	}
 
 	txHash := msg.Params.Result.TxHash
+	if txHash == "0x38e9501f8b973b4a89fa8f33a2e01db6256ffbf3faef1ec305880f976c8aad29" {
+		fmt.Printf("found 38e9501f8b973b4a89fa8f33a2e01db6256ffbf3faef1ec305880f976c8aad29 in bloxroute")
+	}
 	log.Debugf("got message at %s (BXR node, ALL), txHash: %s", timeReceived, txHash)
 
 	if timeReceived.Before(s.timeToBeginComparison) {
@@ -354,6 +359,9 @@ func (s *TxFeedsCompareFiberService) processFeedFromFiber(data *message) error {
 	timeReceived := time.Now()
 
 	txHash := data.hash
+	if txHash == "0x38e9501f8b973b4a89fa8f33a2e01db6256ffbf3faef1ec305880f976c8aad29" {
+		fmt.Printf("found 38e9501f8b973b4a89fa8f33a2e01db6256ffbf3faef1ec305880f976c8aad29 in fiber")
+	}
 	log.Debugf("got message at %s (BXR node, ALL), txHash: %s", timeReceived, txHash)
 
 	if timeReceived.Before(s.timeToBeginComparison) {
@@ -402,9 +410,16 @@ func (s *TxFeedsCompareFiberService) stats(ignoreDelta int, verbose bool) string
 			}
 		}
 		if !validTx {
-			fmt.Printf("transaction %v was not found in a block", txHash)
+			if entry.bxrTimeReceived.IsZero() {
+				fmt.Printf("fiber transaction %v was not found in a block\n", txHash)
+			} else if entry.fiberTimeReceived.IsZero() {
+				fmt.Printf("bloxroute transaction %v was not found in a block\n", txHash)
+			} else {
+				fmt.Printf("both fiber and bloxroute transaction %v was not found in a block\n", txHash)
+			}
 			continue
 		}
+
 		if entry.bxrTimeReceived.IsZero() {
 			fiberTimeReceived := entry.fiberTimeReceived
 
@@ -415,7 +430,7 @@ func (s *TxFeedsCompareFiberService) stats(ignoreDelta int, verbose bool) string
 				}
 			}
 			if s.allHashesFile != nil {
-				record := []string{txHash, "0", fiberTimeReceived.Format(timestampFormat), "0"}
+				record := []string{txHash, "0", fiberTimeReceived.Format(timestampFormat), "0", "1"}
 				if err := s.allHashesFile.Write(record); err != nil {
 					log.Errorf("cannot add txHash %q to all hashes file: %v", txHash, err)
 				}
@@ -428,7 +443,7 @@ func (s *TxFeedsCompareFiberService) stats(ignoreDelta int, verbose bool) string
 			gatewayTimeReceived := entry.bxrTimeReceived
 
 			if s.allHashesFile != nil {
-				record := []string{txHash, gatewayTimeReceived.Format(timestampFormat), "0", "0"}
+				record := []string{txHash, gatewayTimeReceived.Format(timestampFormat), "0", "0", "1"}
 				if err := s.allHashesFile.Write(record); err != nil {
 					log.Errorf("cannot add txHash %q to all hashes file: %v", txHash, err)
 				}
@@ -458,6 +473,7 @@ func (s *TxFeedsCompareFiberService) stats(ignoreDelta int, verbose bool) string
 				gatewayTimeReceived.Format(timestampFormat),
 				fiberTimeReceived.Format(timestampFormat),
 				fmt.Sprintf("%d", timeReceivedDiff.Milliseconds()),
+				"1",
 			}
 			if err := s.allHashesFile.Write(record); err != nil {
 				log.Errorf("cannot add txHash %q to all hashes file: %v", txHash, err)
@@ -493,10 +509,10 @@ func (s *TxFeedsCompareFiberService) stats(ignoreDelta int, verbose bool) string
 	}
 
 	if newTxSeenByBothFeeds != 0 {
-		txPercentageSeenByGatewayFirst = float64(txSeenByBothFeedsGatewayFirst) / float64(newTxSeenByBothFeeds)
+		txPercentageSeenByGatewayFirst = txSeenByBothFeedsGatewayFirst / newTxSeenByBothFeeds
 	}
 
-	var timeAverage = txPercentageSeenByGatewayFirst*float64(txReceivedByGatewayFirstAvgDelta) - (1-txPercentageSeenByGatewayFirst)*float64(txReceivedByFiberFirstAvgDelta)
+	var timeAverage = txPercentageSeenByGatewayFirst*txReceivedByGatewayFirstAvgDelta - (1-txPercentageSeenByGatewayFirst)*txReceivedByFiberFirstAvgDelta
 	results := fmt.Sprintf(
 		"\nAnalysis of Transactions received on both feeds:\n"+
 			"Number of transactions: %d\n"+
@@ -727,8 +743,11 @@ func (s *TxFeedsCompareFiberService) processBlockFeedFromBX(data *message) error
 	hash := msg.Params.Result.Hash
 	log.Debugf("got message at %s (BXR node, ALL), hash: %s", timeReceived, hash)
 
-	s.seenTxsInBlock = append(s.seenTxsInBlock, msg.Params.Result.Transaction...)
-	fmt.Printf("Added transactions: %v", msg.Params.Result.Transaction)
+	var blockTxs []string
+	for _, v := range msg.Params.Result.Transactions {
+		blockTxs = append(blockTxs, fmt.Sprint(v["hash"]))
+	}
+	s.seenTxsInBlock = append(s.seenTxsInBlock, blockTxs...)
 
 	return nil
 }

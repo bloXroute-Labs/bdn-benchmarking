@@ -49,8 +49,8 @@ type bxTxFeedResponse struct {
 type bxBkFeedResponse struct {
 	Params struct {
 		Result struct {
-			Hash        string   `json:"hash"`
-			Transaction []string `json:"transactions"`
+			Hash         string                   `json:"hash"`
+			Transactions []map[string]interface{} `json:"transactions"`
 		} `json:"result"`
 	} `json:"params"`
 }

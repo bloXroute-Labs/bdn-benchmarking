@@ -566,9 +566,9 @@ func (s *TxFeedsCompareFiberGrpcService) readFeedFromFiber(
 	// Listen for incoming transactions
 	for tx := range ch {
 		var (
-			timeReceived := time.Now()
-			msg = &message{
-				hash: tx.Hash.String(),
+			timeReceived = time.Now()
+			msg          = &message{
+				hash:         tx.Hash.String(),
 				timeReceived: timeReceived,
 			}
 		)
