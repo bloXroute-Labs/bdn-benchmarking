@@ -22,9 +22,10 @@ import (
 // TxFeedsCompareFiberService represents a service which compares transaction feeds time difference
 // between fiber gateway and BX cloud services.
 type TxFeedsCompareFiberService struct {
-	handlers chan handler
-	fiberCh  chan *message
-	bxCh     chan *message
+	handlers  chan handler
+	fiberCh   chan *message
+	bxCh      chan *message
+	bxBlockCh chan *message
 
 	hashes chan string
 
@@ -44,6 +45,8 @@ type TxFeedsCompareFiberService struct {
 
 	allHashesFile     *csv.Writer
 	missingHashesFile *bufio.Writer
+
+	seenTxsInBlock []string
 }
 
 // NewTxFeedsCompareFiberService creates and initializes TxFeedsCompareFiberService instance.
@@ -194,6 +197,14 @@ func (s *TxFeedsCompareFiberService) Run(c *cli.Context) error {
 		c.String(flags.FiberAPIKey.Name),
 	)
 
+	go s.readBlockFeedFromBX(
+		ctx,
+		&readerGroup,
+		s.bxBlockCh,
+		c.String(flags.Gateway.Name),
+		c.String(flags.AuthHeader.Name),
+	)
+
 	handleGroup.Add(1)
 	go s.handleUpdates(ctx, &handleGroup)
 
@@ -277,6 +288,14 @@ func (s *TxFeedsCompareFiberService) handleUpdates(
 				}
 
 				if err := s.processFeedFromFiber(data); err != nil {
+					log.Errorf("error: %v", err)
+				}
+			case data, ok := <-s.bxBlockCh:
+				if !ok {
+					continue
+				}
+
+				if err := s.processBlockFeedFromBX(data); err != nil {
 					log.Errorf("error: %v", err)
 				}
 			default:
@@ -376,6 +395,16 @@ func (s *TxFeedsCompareFiberService) stats(ignoreDelta int, verbose bool) string
 	)
 
 	for txHash, entry := range s.seenHashes {
+		var validTx bool
+		for _, t := range s.seenTxsInBlock {
+			if txHash == t {
+				validTx = true
+			}
+		}
+		if !validTx {
+			fmt.Printf("transaction %v was not found in a block", txHash)
+			continue
+		}
 		if entry.bxrTimeReceived.IsZero() {
 			fiberTimeReceived := entry.fiberTimeReceived
 
@@ -470,28 +499,26 @@ func (s *TxFeedsCompareFiberService) stats(ignoreDelta int, verbose bool) string
 	var timeAverage = txPercentageSeenByGatewayFirst*float64(txReceivedByGatewayFirstAvgDelta) - (1-txPercentageSeenByGatewayFirst)*float64(txReceivedByFiberFirstAvgDelta)
 	results := fmt.Sprintf(
 		"\nAnalysis of Transactions received on both feeds:\n"+
-			"Number of transactions: %f\n"+
-			"Number of transactions received from bloXroute gateway first: %f\n"+
-			"Number of transactions received from Fiber first: %f\n"+
+			"Number of transactions: %d\n"+
+			"Number of transactions received from bloXroute gateway first: %d\n"+
+			"Number of transactions received from Fiber first: %d\n"+
 			"Percentage of transactions seen first from bloXroute gateway: %.2f%%\n"+
 			"Average time difference for transactions received first from bloXroute gateway (s): %f\n"+
 			"Average time difference for transactions received first from Fiber (s): %f\n"+
 			"Gateway is faster then Fiber by (s): %.2f\n"+
 			"\nTotal Transactions summary:\n"+
 			"Total tx from bloXroute gateway: %d\n"+
-			"Total tx from Fiber: %d\n"+
-			"Number of low fee tx ignored: %d\n",
+			"Total tx from Fiber: %d\n",
 
-		newTxSeenByBothFeeds,
-		txSeenByBothFeedsGatewayFirst,
-		txSeenByBothFeedsFiberFirst,
+		int(newTxSeenByBothFeeds),
+		int(txSeenByBothFeedsGatewayFirst),
+		int(txSeenByBothFeedsFiberFirst),
 		txPercentageSeenByGatewayFirst*100,
 		txReceivedByGatewayFirstAvgDelta,
 		txReceivedByFiberFirstAvgDelta,
 		timeAverage,
 		totalTxFromGateway,
 		totalTxFromFiber,
-		len(s.lowFeeHashes),
 	)
 
 	verboseResults := fmt.Sprintf(
@@ -629,4 +656,79 @@ func (s *TxFeedsCompareFiberService) clearTrailNewHashes() {
 		}
 	}()
 	<-done
+}
+
+func (s *TxFeedsCompareFiberService) readBlockFeedFromBX(
+	ctx context.Context,
+	wg *sync.WaitGroup,
+	out chan<- *message,
+	uri string,
+	authHeader string,
+) {
+	defer wg.Done()
+
+	log.Infof("Initiating connection to: %s", uri)
+	conn, err := ws.NewConnection(uri, authHeader)
+	if err != nil {
+		log.Errorf("cannot establish connection to %s: %v", uri, err)
+		return
+	}
+	log.Infof("Connection to %s established", uri)
+
+	defer func() {
+		if err := conn.Close(); err != nil {
+			log.Errorf("cannot close socket connection to %s: %v", uri, err)
+		}
+	}()
+
+	sub, err := conn.SubscribeBkFeedBX(1, "bdnBlocks", false)
+
+	if err != nil {
+		log.Errorf("cannot subscribe to feed %q: %v", s.feedName, err)
+		return
+	}
+
+	defer func() {
+		if err := sub.Unsubscribe(); err != nil {
+			log.Errorf("cannot unsubscribe from feed %q: %v", s.feedName, err)
+		}
+	}()
+
+	for {
+		var (
+			data, err = sub.NextMessage()
+			msg       = &message{
+				bytes: data,
+				err:   err,
+			}
+		)
+
+		select {
+		case <-ctx.Done():
+			return
+		case out <- msg:
+		}
+	}
+}
+
+func (s *TxFeedsCompareFiberService) processBlockFeedFromBX(data *message) error {
+	if data.err != nil {
+		return fmt.Errorf("failed to read message from feed %q: %v",
+			s.feedName, data.err)
+	}
+
+	timeReceived := time.Now()
+
+	var msg bxBkFeedResponse
+	if err := json.Unmarshal(data.bytes, &msg); err != nil {
+		return fmt.Errorf("failed to unmarshal message: %v", err)
+	}
+
+	hash := msg.Params.Result.Hash
+	log.Debugf("got message at %s (BXR node, ALL), hash: %s", timeReceived, hash)
+
+	s.seenTxsInBlock = append(s.seenTxsInBlock, msg.Params.Result.Transaction...)
+	fmt.Printf("Added transactions: %v", msg.Params.Result.Transaction)
+
+	return nil
 }
