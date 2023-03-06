@@ -543,9 +543,9 @@ func (s *TxFeedsCompareMEVLinkService) stats(ignoreDelta int, verbose bool) stri
 			"Number of transactions received from bloXroute gateway first: %d\n"+
 			"Number of transactions received from MEVLink first: %d\n"+
 			"Percentage of transactions seen first from bloXroute gateway: %.2f%%\n"+
-			"Average time difference for transactions received first from bloXroute gateway (s): %f\n"+
-			"Average time difference for transactions received first from MEVLink (s): %f\n"+
-			"Gateway is faster then MEVLink by (s): %.6f\n"+
+			"Average time difference for transactions received first from bloXroute gateway (ms): %f\n"+
+			"Average time difference for transactions received first from MEVLink (ms): %f\n"+
+			"Gateway is faster then MEVLink by (ms): %.6f\n"+
 			"\nTotal Transactions summary:\n"+
 			"Total tx from bloXroute gateway: %d\n"+
 			"Total tx from MEVLink: %d\n",
@@ -554,9 +554,9 @@ func (s *TxFeedsCompareMEVLinkService) stats(ignoreDelta int, verbose bool) stri
 		int(txSeenByBothFeedsGatewayFirst),
 		int(txSeenByBothFeedsMEVLinkFirst),
 		txPercentageSeenByGatewayFirst*100,
-		txReceivedByGatewayFirstAvgDelta,
-		txReceivedByMevLinkFirstAvgDelta,
-		timeAverage,
+		txReceivedByGatewayFirstAvgDelta*1000,
+		txReceivedByMevLinkFirstAvgDelta*1000,
+		timeAverage*1000,
 		totalTxFromGateway,
 		totalTxFromMEVLink,
 	)
