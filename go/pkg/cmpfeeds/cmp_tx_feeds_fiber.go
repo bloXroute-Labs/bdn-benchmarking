@@ -321,9 +321,6 @@ func (s *TxFeedsCompareFiberService) processFeedFromBX(data *message) error {
 	}
 
 	txHash := msg.Params.Result.TxHash
-	if txHash == "0x38e9501f8b973b4a89fa8f33a2e01db6256ffbf3faef1ec305880f976c8aad29" {
-		fmt.Printf("found 38e9501f8b973b4a89fa8f33a2e01db6256ffbf3faef1ec305880f976c8aad29 in bloxroute")
-	}
 	log.Debugf("got message at %s (BXR node, ALL), txHash: %s", timeReceived, txHash)
 
 	if timeReceived.Before(s.timeToBeginComparison) {
@@ -359,9 +356,6 @@ func (s *TxFeedsCompareFiberService) processFeedFromFiber(data *message) error {
 	timeReceived := time.Now()
 
 	txHash := data.hash
-	if txHash == "0x38e9501f8b973b4a89fa8f33a2e01db6256ffbf3faef1ec305880f976c8aad29" {
-		fmt.Printf("found 38e9501f8b973b4a89fa8f33a2e01db6256ffbf3faef1ec305880f976c8aad29 in fiber")
-	}
 	log.Debugf("got message at %s (BXR node, ALL), txHash: %s", timeReceived, txHash)
 
 	if timeReceived.Before(s.timeToBeginComparison) {
