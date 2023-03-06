@@ -164,4 +164,12 @@ var (
 		Name:  "fiber-api-key",
 		Usage: "Fiber API key",
 	}
+	MEVLinkAPIKey = &cli.StringFlag{
+		Name:  "mevLink-api-key",
+		Usage: "mevLink api key",
+	}
+	MEVLinkAPISecret = &cli.StringFlag{
+		Name:  "mevLink-api-secret",
+		Usage: "mevLink api secret",
+	}
 )
