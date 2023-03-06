@@ -405,11 +405,11 @@ func (s *TxFeedsCompareFiberService) stats(ignoreDelta int, verbose bool) string
 		}
 		if !validTx {
 			if entry.bxrTimeReceived.IsZero() {
-				fmt.Printf("fiber transaction %v was not found in a block\n", txHash)
+				log.Debugf("fiber transaction %v was not found in a block\n", txHash)
 			} else if entry.fiberTimeReceived.IsZero() {
-				fmt.Printf("bloxroute transaction %v was not found in a block\n", txHash)
+				log.Debugf("bloxroute transaction %v was not found in a block\n", txHash)
 			} else {
-				fmt.Printf("both fiber and bloxroute transaction %v was not found in a block\n", txHash)
+				log.Debugf("both fiber and bloxroute transaction %v was not found in a block\n", txHash)
 			}
 			continue
 		}
