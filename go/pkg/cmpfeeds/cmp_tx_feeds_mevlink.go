@@ -7,11 +7,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/rlp"
 	mlstreamer "github.com/mevlink/streamer-go"
 	log "github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
-	"golang.org/x/crypto/sha3"
-	"hash"
 	"math"
 	"os"
 	"performance/internal/pkg/flags"
@@ -71,7 +72,7 @@ func NewTxFeedsCompareMEVLinkService() *TxFeedsCompareMEVLinkService {
 	}
 }
 
-// Run is an entry point to the TxFeedsCompareFiberService.
+// Run is an entry point to the TxFeedsCompareMEVLinkService.
 func (s *TxFeedsCompareMEVLinkService) Run(c *cli.Context) error {
 	mevLinkCh = s.mevLinkCh
 	if mgp := c.Float64(flags.MinGasPrice.Name); mgp != 0.0 {
@@ -126,7 +127,7 @@ func (s *TxFeedsCompareMEVLinkService) Run(c *cli.Context) error {
 			s.allHashesFile = csv.NewWriter(file)
 
 			if err := s.allHashesFile.Write([]string{
-				"TxHash", "BloXRoute Time", "Fiber Time", "Time Diff", "Mined In The Block",
+				"TxHash", "BloXRoute Time", "MEVLink Time", "Time Diff", "Mined In The Block",
 			}); err != nil {
 				return fmt.Errorf("cannot write CSV header of file %q: %v", fileName, err)
 			}
@@ -266,9 +267,6 @@ func (s *TxFeedsCompareMEVLinkService) handleUpdates(
 	wg *sync.WaitGroup,
 ) {
 	defer wg.Done()
-
-	hasher := sha3.NewLegacyKeccak256()
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -296,7 +294,7 @@ func (s *TxFeedsCompareMEVLinkService) handleUpdates(
 					continue
 				}
 
-				if err := s.processFeedFromMEVLink(data, hasher); err != nil {
+				if err := s.processFeedFromMEVLink(data); err != nil {
 					log.Errorf("error: %v", err)
 				}
 			case data, ok := <-s.bxBlockCh:
@@ -355,7 +353,15 @@ func (s *TxFeedsCompareMEVLinkService) processFeedFromBX(data *message) error {
 	return nil
 }
 
-func (s *TxFeedsCompareMEVLinkService) processFeedFromMEVLink(data *message, hasher hash.Hash) error {
+// DecodeHex gets the bytes of a hexadecimal string, with or without its `0x` prefix
+func DecodeHex(str string) ([]byte, error) {
+	if len(str) > 2 && str[:2] == "0x" {
+		str = str[2:]
+	}
+	return hex.DecodeString(str)
+}
+
+func (s *TxFeedsCompareMEVLinkService) processFeedFromMEVLink(data *message) error {
 	if data.err != nil {
 		return fmt.Errorf("failed to read message from feed %q: %v",
 			s.feedName, data.err)
@@ -363,11 +369,24 @@ func (s *TxFeedsCompareMEVLinkService) processFeedFromMEVLink(data *message, has
 
 	timeReceived := time.Now()
 
-	hasher.Write(data.bytes)
-	h := hasher.Sum(nil)
-	txHash := "0x" + hex.EncodeToString(h)
+	txStr := hexutil.Encode(data.bytes)
+	txBytes, err := DecodeHex(txStr)
+	if err != nil {
+		return err
+	}
 
-	log.Debugf("got message at %s (BXR node, ALL), txHash: %s", timeReceived, txHash)
+	var ethTx types.Transaction
+	err = ethTx.UnmarshalBinary(txBytes)
+	if err != nil {
+		// If UnmarshalBinary failed, we will try RLP in case user made mistake
+		e := rlp.DecodeBytes(txBytes, &ethTx)
+		if e != nil {
+			log.Errorf("could not decode Ethereum transaction: %v", err)
+			return e
+		}
+	}
+	txHash := ethTx.Hash().String()
+	log.Debugf("got message at %s (mev link, ALL), txHash: %s", timeReceived, txHash)
 
 	if timeReceived.Before(s.timeToBeginComparison) {
 		s.leadNewHashes.Add(txHash)
@@ -375,16 +394,16 @@ func (s *TxFeedsCompareMEVLinkService) processFeedFromMEVLink(data *message, has
 	}
 
 	if entry, ok := s.seenHashes[txHash]; ok {
-		if entry.fiberTimeReceived.IsZero() {
-			entry.fiberTimeReceived = timeReceived
+		if entry.mevLinkTimeReceived.IsZero() {
+			entry.mevLinkTimeReceived = timeReceived
 		}
 	} else if timeReceived.Before(s.timeToEndComparison) &&
 		!s.trailNewHashes.Contains(txHash) &&
 		!s.leadNewHashes.Contains(txHash) {
 
 		s.seenHashes[txHash] = &hashEntry{
-			hash:              txHash,
-			fiberTimeReceived: timeReceived,
+			hash:                txHash,
+			mevLinkTimeReceived: timeReceived,
 		}
 	} else {
 		s.trailNewHashes.Add(txHash)
@@ -398,7 +417,7 @@ func (s *TxFeedsCompareMEVLinkService) stats(ignoreDelta int, verbose bool) stri
 
 	var (
 		txSeenByBothFeedsGatewayFirst      = float64(0)
-		txSeenByBothFeedsFiberFirst        = float64(0)
+		txSeenByBothFeedsMEVLinkFirst      = float64(0)
 		txReceivedByGatewayFirstTotalDelta = float64(0)
 		txReceivedByMEVLinkFirstTotalDelta = float64(0)
 		newTxFromGatewayFeedFirst          = 0
@@ -416,17 +435,17 @@ func (s *TxFeedsCompareMEVLinkService) stats(ignoreDelta int, verbose bool) stri
 		}
 		if !validTx {
 			if entry.bxrTimeReceived.IsZero() {
-				log.Debugf("fiber transaction %v was not found in a block\n", txHash)
-			} else if entry.fiberTimeReceived.IsZero() {
+				log.Debugf("mevLink transaction %v was not found in a block\n", txHash)
+			} else if entry.mevLinkTimeReceived.IsZero() {
 				log.Debugf("bloxroute transaction %v was not found in a block\n", txHash)
 			} else {
-				log.Debugf("both fiber and bloxroute transaction %v was not found in a block\n", txHash)
+				log.Debugf("both mev link and bloxroute transaction %v was not found in a block\n", txHash)
 			}
 			continue
 		}
 
 		if entry.bxrTimeReceived.IsZero() {
-			fiberTimeReceived := entry.fiberTimeReceived
+			mevLinkTimeReceived := entry.mevLinkTimeReceived
 
 			if s.missingHashesFile != nil {
 				line := fmt.Sprintf("%s\n", txHash)
@@ -435,7 +454,7 @@ func (s *TxFeedsCompareMEVLinkService) stats(ignoreDelta int, verbose bool) stri
 				}
 			}
 			if s.allHashesFile != nil {
-				record := []string{txHash, "0", fiberTimeReceived.Format(timestampFormat), "0", "1"}
+				record := []string{txHash, "0", mevLinkTimeReceived.Format(timestampFormat), "0", "1"}
 				if err := s.allHashesFile.Write(record); err != nil {
 					log.Errorf("cannot add txHash %q to all hashes file: %v", txHash, err)
 				}
@@ -444,7 +463,7 @@ func (s *TxFeedsCompareMEVLinkService) stats(ignoreDelta int, verbose bool) stri
 			totalTxFromMEVLink++
 			continue
 		}
-		if entry.fiberTimeReceived.IsZero() {
+		if entry.mevLinkTimeReceived.IsZero() {
 			gatewayTimeReceived := entry.bxrTimeReceived
 
 			if s.allHashesFile != nil {
@@ -459,9 +478,9 @@ func (s *TxFeedsCompareMEVLinkService) stats(ignoreDelta int, verbose bool) stri
 		}
 
 		var (
-			fiberTimeReceived   = entry.fiberTimeReceived
+			mevLinkTimeReceived = entry.mevLinkTimeReceived
 			gatewayTimeReceived = entry.bxrTimeReceived
-			timeReceivedDiff    = gatewayTimeReceived.Sub(fiberTimeReceived)
+			timeReceivedDiff    = gatewayTimeReceived.Sub(mevLinkTimeReceived)
 		)
 
 		totalTxFromGateway++
@@ -476,7 +495,7 @@ func (s *TxFeedsCompareMEVLinkService) stats(ignoreDelta int, verbose bool) stri
 			record := []string{
 				txHash,
 				gatewayTimeReceived.Format(timestampFormat),
-				fiberTimeReceived.Format(timestampFormat),
+				mevLinkTimeReceived.Format(timestampFormat),
 				fmt.Sprintf("%d", timeReceivedDiff.Milliseconds()),
 				"1",
 			}
@@ -486,22 +505,22 @@ func (s *TxFeedsCompareMEVLinkService) stats(ignoreDelta int, verbose bool) stri
 		}
 
 		switch {
-		case gatewayTimeReceived.Before(fiberTimeReceived):
+		case gatewayTimeReceived.Before(mevLinkTimeReceived):
 			newTxFromGatewayFeedFirst++
 			txSeenByBothFeedsGatewayFirst++
 			txReceivedByGatewayFirstTotalDelta += -timeReceivedDiff.Seconds()
-		case fiberTimeReceived.Before(gatewayTimeReceived):
+		case mevLinkTimeReceived.Before(gatewayTimeReceived):
 			newTxFromMEVLinkFeedFirst++
-			txSeenByBothFeedsFiberFirst++
+			txSeenByBothFeedsMEVLinkFirst++
 			txReceivedByMEVLinkFirstTotalDelta += timeReceivedDiff.Seconds()
 		}
 	}
 
 	var (
 		newTxSeenByBothFeeds = txSeenByBothFeedsGatewayFirst +
-			txSeenByBothFeedsFiberFirst
+			txSeenByBothFeedsMEVLinkFirst
 		txReceivedByGatewayFirstAvgDelta = float64(0)
-		txReceivedByFiberFirstAvgDelta   = float64(0)
+		txReceivedByMevLinkFirstAvgDelta = float64(0)
 		txPercentageSeenByGatewayFirst   = float64(0)
 	)
 
@@ -509,15 +528,15 @@ func (s *TxFeedsCompareMEVLinkService) stats(ignoreDelta int, verbose bool) stri
 		txReceivedByGatewayFirstAvgDelta = txReceivedByGatewayFirstTotalDelta / txSeenByBothFeedsGatewayFirst
 	}
 
-	if txSeenByBothFeedsFiberFirst != 0 {
-		txReceivedByFiberFirstAvgDelta = txReceivedByMEVLinkFirstTotalDelta / txSeenByBothFeedsFiberFirst
+	if txSeenByBothFeedsMEVLinkFirst != 0 {
+		txReceivedByMevLinkFirstAvgDelta = txReceivedByMEVLinkFirstTotalDelta / txSeenByBothFeedsMEVLinkFirst
 	}
 
 	if newTxSeenByBothFeeds != 0 {
 		txPercentageSeenByGatewayFirst = txSeenByBothFeedsGatewayFirst / newTxSeenByBothFeeds
 	}
 
-	var timeAverage = txPercentageSeenByGatewayFirst*txReceivedByGatewayFirstAvgDelta - (1-txPercentageSeenByGatewayFirst)*txReceivedByFiberFirstAvgDelta
+	var timeAverage = txPercentageSeenByGatewayFirst*txReceivedByGatewayFirstAvgDelta - (1-txPercentageSeenByGatewayFirst)*txReceivedByMevLinkFirstAvgDelta
 	results := fmt.Sprintf(
 		"\nAnalysis of Transactions received on both feeds:\n"+
 			"Number of transactions: %d\n"+
@@ -529,14 +548,14 @@ func (s *TxFeedsCompareMEVLinkService) stats(ignoreDelta int, verbose bool) stri
 			"Gateway is faster then MEVLink by (s): %.6f\n"+
 			"\nTotal Transactions summary:\n"+
 			"Total tx from bloXroute gateway: %d\n"+
-			"Total tx from Fiber: %d\n",
+			"Total tx from MEVLink: %d\n",
 
 		int(newTxSeenByBothFeeds),
 		int(txSeenByBothFeedsGatewayFirst),
-		int(txSeenByBothFeedsFiberFirst),
+		int(txSeenByBothFeedsMEVLinkFirst),
 		txPercentageSeenByGatewayFirst*100,
 		txReceivedByGatewayFirstAvgDelta,
-		txReceivedByFiberFirstAvgDelta,
+		txReceivedByMevLinkFirstAvgDelta,
 		timeAverage,
 		totalTxFromGateway,
 		totalTxFromMEVLink,

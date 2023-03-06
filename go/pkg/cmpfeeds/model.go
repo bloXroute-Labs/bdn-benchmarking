@@ -12,10 +12,11 @@ type message struct {
 }
 
 type hashEntry struct {
-	ethTimeReceived   time.Time
-	bxrTimeReceived   time.Time
-	fiberTimeReceived time.Time
-	hash              string
+	ethTimeReceived     time.Time
+	bxrTimeReceived     time.Time
+	fiberTimeReceived   time.Time
+	mevLinkTimeReceived time.Time
+	hash                string
 }
 
 type ethTxFeedResponse struct {
