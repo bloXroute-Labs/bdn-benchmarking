@@ -513,9 +513,9 @@ func (s *TxFeedsCompareFiberService) stats(ignoreDelta int, verbose bool) string
 			"Number of transactions received from bloXroute gateway first: %d\n"+
 			"Number of transactions received from Fiber first: %d\n"+
 			"Percentage of transactions seen first from bloXroute gateway: %.2f%%\n"+
-			"Average time difference for transactions received first from bloXroute gateway (s): %f\n"+
-			"Average time difference for transactions received first from Fiber (s): %f\n"+
-			"Gateway is faster then Fiber by (s): %.6f\n"+
+			"Average time difference for transactions received first from bloXroute gateway (ms): %f\n"+
+			"Average time difference for transactions received first from Fiber (ms): %f\n"+
+			"Gateway is faster then Fiber by (ms): %.6f\n"+
 			"\nTotal Transactions summary:\n"+
 			"Total tx from bloXroute gateway: %d\n"+
 			"Total tx from Fiber: %d\n",
@@ -524,9 +524,9 @@ func (s *TxFeedsCompareFiberService) stats(ignoreDelta int, verbose bool) string
 		int(txSeenByBothFeedsGatewayFirst),
 		int(txSeenByBothFeedsFiberFirst),
 		txPercentageSeenByGatewayFirst*100,
-		txReceivedByGatewayFirstAvgDelta,
-		txReceivedByFiberFirstAvgDelta,
-		timeAverage,
+		txReceivedByGatewayFirstAvgDelta*1000,
+		txReceivedByFiberFirstAvgDelta*1000,
+		timeAverage*1000,
 		totalTxFromGateway,
 		totalTxFromFiber,
 	)
