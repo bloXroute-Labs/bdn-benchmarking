@@ -219,6 +219,7 @@ func newSubTxFeedRequestBX(
 	}
 
 	options["include"] = []string{}
+	options["filters"] = ""
 
 	return NewRequest(id, "subscribe", []interface{}{
 		feedName, options,

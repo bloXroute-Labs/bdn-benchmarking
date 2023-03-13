@@ -12,6 +12,7 @@ This command line utility has three top-level commands:
 * `transactions` - compares stream of txs from gateway vs node.
 * `blocks` - compares stream of blocks from gateway vs node.
 * `txspeed` - compares transaction sending speed by submitting conflicting txs
+* `txwsgrpc` - compares transaction sending by websocket or gRPC connection
 with the same nonce to node and gateway (so only one tx will land on chain).
 
 ### Transactions steam
