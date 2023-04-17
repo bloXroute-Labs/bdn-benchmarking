@@ -152,7 +152,7 @@ func (s *TxFeedsCompareService) Run(c *cli.Context) error {
 	var (
 		leadTimeSec  = c.Int(flags.LeadTime.Name)
 		intervalSec  = c.Int(flags.Interval.Name)
-		trailTimeSec = c.Int(flags.TxTrailTime.Name)
+		trailTimeSec = c.Int(flags.TrailTime.Name)
 		ethURI       = c.String(flags.Eth.Name)
 		ctx, cancel  = context.WithCancel(context.Background())
 
