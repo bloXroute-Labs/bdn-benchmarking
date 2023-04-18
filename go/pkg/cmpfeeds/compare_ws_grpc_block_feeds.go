@@ -258,12 +258,7 @@ func (s *BlockGrpcWSCompareService) processFeedFromBX(data *message) error {
 			s.feedName, data.err)
 	}
 
-	var msg bxBkFeedResponse
-	if err := json.Unmarshal(data.bytes, &msg); err != nil {
-		return fmt.Errorf("failed to unmarshal message: %v", err)
-	}
-
-	blockHash := msg.Params.Result.Hash
+	blockHash := data.hash
 	log.Debugf("got message at %s (BXR node, ALL), blockHash: %s", data.timeReceived, blockHash)
 
 	if data.timeReceived.Before(s.timeToBeginComparison) {
@@ -496,11 +491,18 @@ func (s *BlockGrpcWSCompareService) readFeedFromBX(
 	}()
 
 	for {
+		feedData, err := sub.NextMessage()
+		var feedResponse bxBkFeedResponse
+		if err := json.Unmarshal(feedData, &feedResponse); err != nil {
+			log.Errorf("failed to unmarshal block message: %v", err)
+			continue
+		}
+
+		blockHash := feedResponse.Params.Result.Hash
 		var (
-			data, err    = sub.NextMessage()
 			timeReceived = time.Now()
 			msg          = &message{
-				bytes:        data,
+				hash:         blockHash,
 				err:          err,
 				timeReceived: timeReceived,
 			}
@@ -556,7 +558,8 @@ func (s *BlockGrpcWSCompareService) readFeedFromGRPC(ctx context.Context, wg *sy
 	defer cancel()
 
 	log.Infof("Connection to %s established", uri)
-	if s.feedName == "newBlocks" {
+	switch s.feedName {
+	case "newBlocks":
 		stream, err := client.NewBlocks(callContext, &pb.BlocksRequest{})
 		if err != nil {
 			log.Errorf("could not create newBlocks %v", err)
@@ -583,7 +586,7 @@ func (s *BlockGrpcWSCompareService) readFeedFromGRPC(ctx context.Context, wg *sy
 				}
 			}
 		}
-	} else if s.feedName == "bdnBlocks" {
+	case "bdnBlocks":
 		stream, err := client.BdnBlocks(callContext, &pb.BlocksRequest{})
 		if err != nil {
 			log.Errorf("could not create bdnBlocks %v", err)
@@ -610,5 +613,8 @@ func (s *BlockGrpcWSCompareService) readFeedFromGRPC(ctx context.Context, wg *sy
 				}
 			}
 		}
+	default:
+		log.Errorf("feed name %v is not recognized", s.feedName)
+		os.Exit(1)
 	}
 }

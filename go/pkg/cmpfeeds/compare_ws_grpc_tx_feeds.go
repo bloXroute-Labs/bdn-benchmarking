@@ -623,7 +623,8 @@ func (s *TxGrpcWSCompareService) readFeedFromGRPC(ctx context.Context, wg *sync.
 	defer cancel()
 
 	log.Infof("Connection to %s established", uri)
-	if s.feedName == "newTxs" {
+	switch s.feedName {
+	case "newTxs":
 		stream, err := client.NewTxs(callContext, &pb.NewTxsRequest{Filters: ""})
 		if err != nil {
 			log.Errorf("could not create newTxs %v", err)
@@ -650,7 +651,7 @@ func (s *TxGrpcWSCompareService) readFeedFromGRPC(ctx context.Context, wg *sync.
 				}
 			}
 		}
-	} else if s.feedName == "pendingTxs" {
+	case "pendingTxs":
 		stream, err := client.PendingTxs(callContext, &pb.PendingTxsRequest{Filters: ""})
 		if err != nil {
 			log.Errorf("could not create pendingTxs %v", err)
@@ -677,7 +678,7 @@ func (s *TxGrpcWSCompareService) readFeedFromGRPC(ctx context.Context, wg *sync.
 				}
 			}
 		}
-	} else {
+	default:
 		log.Errorf("invalid feed name provided")
 		os.Exit(1)
 	}
