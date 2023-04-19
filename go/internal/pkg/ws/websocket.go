@@ -238,7 +238,7 @@ func newSubBkFeedRequestBX(id int, feedName string, excBkContents bool) *Request
 	if excBkContents {
 		options["include"] = []string{"hash", "header"}
 	} else {
-		options["include"] = []string{"hash", "header", "transactions", "uncles"}
+		options["include"] = []string{"hash", "header", "transactions", "uncles", "future_validator_info"}
 	}
 
 	return NewRequest(id, "subscribe", []interface{}{

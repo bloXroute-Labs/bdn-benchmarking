@@ -563,6 +563,7 @@ func (s *BlockGrpcWSCompareService) readFeedFromGRPC(ctx context.Context, wg *sy
 		stream, err := client.NewBlocks(callContext, &pb.BlocksRequest{})
 		if err != nil {
 			log.Errorf("could not create newBlocks %v", err)
+			os.Exit(1)
 		}
 		for {
 			data, err := stream.Recv()
@@ -590,6 +591,7 @@ func (s *BlockGrpcWSCompareService) readFeedFromGRPC(ctx context.Context, wg *sy
 		stream, err := client.BdnBlocks(callContext, &pb.BlocksRequest{})
 		if err != nil {
 			log.Errorf("could not create bdnBlocks %v", err)
+			os.Exit(1)
 		}
 		for {
 			data, err := stream.Recv()
