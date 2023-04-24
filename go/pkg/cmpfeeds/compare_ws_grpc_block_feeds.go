@@ -10,7 +10,6 @@ import (
 	"github.com/urfave/cli/v2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"math"
 	"os"
 	"performance/internal/pkg/flags"
 	"performance/internal/pkg/utils"
@@ -21,9 +20,9 @@ import (
 	"time"
 )
 
-// TxGrpcWSCompareService represents a service which compares transaction feeds time difference
+// BlockGrpcWSCompareService represents a service which compares block feeds time difference
 // between Ws and gRPC connection.
-type TxGrpcWSCompareService struct {
+type BlockGrpcWSCompareService struct {
 	handlers chan handler
 	bxCh     chan *message
 	bxGrpcCh chan *message
@@ -33,61 +32,33 @@ type TxGrpcWSCompareService struct {
 	trailNewHashes        utils.HashSet
 	leadNewHashes         utils.HashSet
 	lowFeeHashes          utils.HashSet
-	highDeltaHashes       utils.HashSet
 	seenHashes            map[string]*grpcHashEntry
 	timeToBeginComparison time.Time
 	timeToEndComparison   time.Time
 	numIntervals          int
 
-	excTxContents bool
-	minGasPrice   *float64
-	addresses     utils.HashSet
-	feedName      string
+	feedName string
 
 	allHashesFile     *csv.Writer
 	missingHashesFile *bufio.Writer
 }
 
-// NewTxWsGrpcCompareService creates and initializes TxGrpcWSCompareService instance.
-func NewTxWsGrpcCompareService() *TxGrpcWSCompareService {
+// NewBlockWsGrpcCompareService creates and initializes BlockGrpcWSCompareService instance.
+func NewBlockWsGrpcCompareService() *BlockGrpcWSCompareService {
 	const bufSize = 8192
-	return &TxGrpcWSCompareService{
-		handlers:        make(chan handler),
-		bxCh:            make(chan *message),
-		bxGrpcCh:        make(chan *message),
-		hashes:          make(chan string, bufSize),
-		lowFeeHashes:    utils.NewHashSet(),
-		highDeltaHashes: utils.NewHashSet(),
-		trailNewHashes:  utils.NewHashSet(),
-		leadNewHashes:   utils.NewHashSet(),
-		seenHashes:      make(map[string]*grpcHashEntry),
+	return &BlockGrpcWSCompareService{
+		handlers:       make(chan handler),
+		bxCh:           make(chan *message),
+		bxGrpcCh:       make(chan *message),
+		hashes:         make(chan string, bufSize),
+		trailNewHashes: utils.NewHashSet(),
+		leadNewHashes:  utils.NewHashSet(),
+		seenHashes:     make(map[string]*grpcHashEntry),
 	}
 }
 
 // Run is an entry point to the TxGrpcWSCompareService.
-func (s *TxGrpcWSCompareService) Run(c *cli.Context) error {
-	if mgp := c.Float64(flags.MinGasPrice.Name); mgp != 0.0 {
-		s.minGasPrice = &mgp
-	}
-
-	if addr := c.String(flags.Addresses.Name); addr != "" {
-		s.addresses = utils.NewHashSet()
-		for _, addr := range strings.Split(strings.ToLower(addr), ",") {
-			s.addresses[addr] = struct{}{}
-		}
-	}
-
-	s.excTxContents = c.Bool(flags.ExcludeTxContents.Name)
-
-	if (s.minGasPrice != nil || len(s.addresses) > 0) && s.excTxContents {
-		return fmt.Errorf(
-			"error: if filtering by minimum gas price or addresses, exclude-tx-contents must be false")
-	}
-
-	if s.minGasPrice != nil {
-		*s.minGasPrice *= 10e8
-	}
-
+func (s *BlockGrpcWSCompareService) Run(c *cli.Context) error {
 	if d := strings.ToUpper(c.String(flags.Dump.Name)); d != "" {
 		const all, missing, allAndMissing = "ALL", "MISSING", "ALL,MISSING"
 		if d != all && d != missing && d != allAndMissing {
@@ -107,7 +78,7 @@ func (s *TxGrpcWSCompareService) Run(c *cli.Context) error {
 				if s.allHashesFile != nil {
 					s.allHashesFile.Flush()
 				}
-				if err := file.Sync(); err != nil {
+				if err := file.Sync; err != nil {
 					log.Errorf("cannot sync contents of file %q: %v", fileName, err)
 				}
 				if err := file.Close(); err != nil {
@@ -118,7 +89,7 @@ func (s *TxGrpcWSCompareService) Run(c *cli.Context) error {
 			s.allHashesFile = csv.NewWriter(file)
 
 			if err := s.allHashesFile.Write([]string{
-				"TxHash", "BloXRoute Time", "Grpc Time", "Time Diff",
+				"TxHash", "BloXroute Time", "Grpc Time", "Time Diff",
 			}); err != nil {
 				return fmt.Errorf("cannot write CSV header of file %q: %v", fileName, err)
 			}
@@ -162,7 +133,7 @@ func (s *TxGrpcWSCompareService) Run(c *cli.Context) error {
 	s.timeToBeginComparison = time.Now().Add(time.Second * time.Duration(leadTimeSec))
 	s.timeToEndComparison = s.timeToBeginComparison.Add(time.Second * time.Duration(intervalSec))
 	s.numIntervals = c.Int(flags.NumIntervals.Name)
-	s.feedName = c.String(flags.TxFeedName.Name)
+	s.feedName = c.String(flags.BkFeedName.Name)
 
 	readerGroup.Add(2)
 
@@ -175,9 +146,7 @@ func (s *TxGrpcWSCompareService) Run(c *cli.Context) error {
 			s.bxCh,
 			c.String(flags.CloudAPIWSURI.Name),
 			c.String(flags.AuthHeader.Name),
-			c.Bool(flags.ExcludeDuplicates.Name),
-			c.Bool(flags.ExcludeFromBlockchain.Name),
-			false,
+			c.Bool(flags.ExcludeBkContents.Name),
 		)
 	} else {
 		go s.readFeedFromBX(
@@ -186,9 +155,7 @@ func (s *TxGrpcWSCompareService) Run(c *cli.Context) error {
 			s.bxCh,
 			c.String(flags.Gateway.Name),
 			c.String(flags.AuthHeader.Name),
-			c.Bool(flags.ExcludeDuplicates.Name),
-			c.Bool(flags.ExcludeFromBlockchain.Name),
-			c.Bool(flags.UseGoGateway.Name),
+			c.Bool(flags.ExcludeBkContents.Name),
 		)
 	}
 
@@ -214,8 +181,7 @@ func (s *TxGrpcWSCompareService) Run(c *cli.Context) error {
 					intervalSec,
 					time.Now().Format("2006-01-02T15:04:05.000"),
 					c.Float64(flags.MinGasPrice.Name),
-					s.stats(c.Int(flags.TxIgnoreDelta.Name),
-						c.Bool(flags.Verbose.Name)),
+					s.stats(c.Bool(flags.Verbose.Name)),
 				)
 
 				s.drainChannels()
@@ -243,7 +209,7 @@ func (s *TxGrpcWSCompareService) Run(c *cli.Context) error {
 	return nil
 }
 
-func (s *TxGrpcWSCompareService) handleUpdates(
+func (s *BlockGrpcWSCompareService) handleUpdates(
 	ctx context.Context,
 	wg *sync.WaitGroup,
 ) {
@@ -286,139 +252,114 @@ func (s *TxGrpcWSCompareService) handleUpdates(
 	}
 }
 
-func (s *TxGrpcWSCompareService) processFeedFromBX(data *message) error {
+func (s *BlockGrpcWSCompareService) processFeedFromBX(data *message) error {
 	if data.err != nil {
 		return fmt.Errorf("failed to read message from feed %q: %v",
 			s.feedName, data.err)
 	}
 
-	var msg bxTxFeedResponse
-	if err := json.Unmarshal(data.bytes, &msg); err != nil {
-		return fmt.Errorf("failed to unmarshal message: %v", err)
-	}
-
-	txHash := msg.Params.Result.TxHash
-	log.Debugf("got message at %s (BXR node, ALL), txHash: %s", data.timeReceived, txHash)
+	blockHash := data.hash
+	log.Debugf("got message at %s (BXR node, ALL), blockHash: %s", data.timeReceived, blockHash)
 
 	if data.timeReceived.Before(s.timeToBeginComparison) {
-		s.leadNewHashes.Add(txHash)
+		s.leadNewHashes.Add(blockHash)
 		return nil
 	}
 
-	if !s.excTxContents {
-		to := msg.Params.Result.TxContents.To
-		if !s.addresses.Empty() && to != nil && !s.addresses.Contains(*to) {
-			return nil
-		}
-
-		if price := msg.Params.Result.TxContents.GasPrice; s.minGasPrice != nil && price != nil {
-			gasPrice, err := parseGasPrice(*price)
-			if err != nil {
-				return fmt.Errorf("cannot parse gas price %q for transaction %q: %v",
-					*price, txHash, err)
-			}
-
-			if float64(gasPrice) < *s.minGasPrice {
-				s.lowFeeHashes.Add(txHash)
-				return nil
-			}
-		}
-	}
-
-	if entry, ok := s.seenHashes[txHash]; ok {
+	if entry, ok := s.seenHashes[blockHash]; ok {
 		if entry.bxrTimeReceived.IsZero() {
 			entry.bxrTimeReceived = data.timeReceived
 		}
 	} else if data.timeReceived.Before(s.timeToEndComparison) &&
-		!s.trailNewHashes.Contains(txHash) &&
-		!s.leadNewHashes.Contains(txHash) {
+		!s.trailNewHashes.Contains(blockHash) &&
+		!s.leadNewHashes.Contains(blockHash) {
 
-		s.seenHashes[txHash] = &grpcHashEntry{
-			hash:            txHash,
+		s.seenHashes[blockHash] = &grpcHashEntry{
+			hash:            blockHash,
 			bxrTimeReceived: data.timeReceived,
 		}
 	} else {
-		s.trailNewHashes.Add(txHash)
+		s.trailNewHashes.Add(blockHash)
 	}
 
 	return nil
 }
 
-func (s *TxGrpcWSCompareService) processFeedFromGRPC(data *message) error {
+func (s *BlockGrpcWSCompareService) processFeedFromGRPC(data *message) error {
 	if data.err != nil {
 		return fmt.Errorf("failed to read message from feed %q: %v", s.feedName, data.err)
 	}
 
-	txHash := data.hash
+	blockHash := data.hash
 
-	log.Debugf("got message at %s (BXR node, ALL), txHash: %s", data.timeReceived, txHash)
+	log.Debugf("got message at %s (BXR node, ALL), blockHash: %s", data.timeReceived, blockHash)
 	if data.timeReceived.Before(s.timeToBeginComparison) {
-		s.leadNewHashes.Add(txHash)
+		s.leadNewHashes.Add(blockHash)
 		return nil
 	}
-	if entry, ok := s.seenHashes[txHash]; ok {
+	if entry, ok := s.seenHashes[blockHash]; ok {
 		if entry.grpcBxrTimeReceived.IsZero() {
 			entry.grpcBxrTimeReceived = data.timeReceived
 		}
 	} else if data.timeReceived.Before(s.timeToEndComparison) &&
-		!s.trailNewHashes.Contains(txHash) &&
-		!s.leadNewHashes.Contains(txHash) {
-		s.seenHashes[txHash] = &grpcHashEntry{
-			hash:                txHash,
+		!s.trailNewHashes.Contains(blockHash) &&
+		!s.leadNewHashes.Contains(blockHash) {
+		s.seenHashes[blockHash] = &grpcHashEntry{
+			hash:                blockHash,
 			grpcBxrTimeReceived: data.timeReceived,
 		}
 	} else {
-		s.trailNewHashes.Add(txHash)
+		s.trailNewHashes.Add(blockHash)
 	}
 
 	return nil
 }
 
-func (s *TxGrpcWSCompareService) stats(ignoreDelta int, verbose bool) string {
+func (s *BlockGrpcWSCompareService) stats(verbose bool) string {
 	const timestampFormat = "2006-01-02T15:04:05.000"
 
 	var (
-		txSeenByBothFeedsGatewayFirst          = int64(0)
-		txSeenByBothFeedsGrpcGatewayFirst      = int64(0)
-		txReceivedByGatewayFirstTotalDelta     = int64(0)
-		txReceivedByGrpcGatewayFirstTotalDelta = int64(0)
-		newTxFromGatewayFeedFirst              = 0
-		newTxFromGrpcGatewayFeedFirst          = 0
-		totalTxFromGateway                     = 0
-		totalTxFromGrpcGateway                 = 0
+		blockSeenByBothFeedsGatewayFirst          = int64(0)
+		blockSeenByBothFeedsGrpcGatewayFirst      = int64(0)
+		blockReceivedByGatewayFirstTotalDelta     = int64(0)
+		blockReceivedByGrpcGatewayFirstTotalDelta = int64(0)
+		newBlockFromGatewayFeedFirst              = 0
+		newBlockFromGrpcGatewayFeedFirst          = 0
+		totalBlockFromGateway                     = 0
+		totalBlockFromGrpcGateway                 = 0
 	)
 
-	for txHash, entry := range s.seenHashes {
+	for blockHash, entry := range s.seenHashes {
 		if entry.bxrTimeReceived.IsZero() {
 			grpcTimeReceived := entry.grpcBxrTimeReceived
 
 			if s.missingHashesFile != nil {
-				line := fmt.Sprintf("%s\n", txHash)
+				line := fmt.Sprintf("%s\n", blockHash)
 				if _, err := s.missingHashesFile.WriteString(line); err != nil {
-					log.Errorf("cannot add txHash %q to missing hashes file: %v", txHash, err)
+					log.Errorf("cannot add blockHash %q to missing hashes file: %v", blockHash, err)
 				}
 			}
 			if s.allHashesFile != nil {
-				record := []string{txHash, "0", grpcTimeReceived.Format(timestampFormat), "0"}
+				record := []string{blockHash, "0", grpcTimeReceived.Format(timestampFormat), "0"}
 				if err := s.allHashesFile.Write(record); err != nil {
-					log.Errorf("cannot add txHash %q to all hashes file: %v", txHash, err)
+					log.Errorf("cannot add blockHash %q to all hashes file: %v", blockHash, err)
 				}
 			}
-			newTxFromGrpcGatewayFeedFirst++
-			totalTxFromGrpcGateway++
+			newBlockFromGrpcGatewayFeedFirst++
+			totalBlockFromGrpcGateway++
 			continue
 		}
 		if entry.grpcBxrTimeReceived.IsZero() {
 			gatewayTimeReceived := entry.bxrTimeReceived
 
 			if s.allHashesFile != nil {
-				record := []string{txHash, gatewayTimeReceived.Format(timestampFormat), "0", "0"}
+				record := []string{blockHash, gatewayTimeReceived.Format(timestampFormat), "0", "0"}
 				if err := s.allHashesFile.Write(record); err != nil {
-					log.Errorf("cannot add txHash %q to all hashes file: %v", txHash, err)
+					log.Errorf("cannot add blockHash %q to all hashes file: %v", blockHash, err)
 				}
 			}
-			newTxFromGatewayFeedFirst++
-			totalTxFromGateway++
+			newBlockFromGatewayFeedFirst++
+			totalBlockFromGateway++
 			continue
 		}
 
@@ -428,92 +369,82 @@ func (s *TxGrpcWSCompareService) stats(ignoreDelta int, verbose bool) string {
 			timeReceivedDiff        = gatewayTimeReceived.Sub(grpcGatewayTimeReceived)
 		)
 
-		totalTxFromGateway++
-		totalTxFromGrpcGateway++
-
-		if math.Abs(timeReceivedDiff.Seconds()) > float64(ignoreDelta) {
-			s.highDeltaHashes.Add(entry.hash)
-			continue
-		}
+		totalBlockFromGateway++
+		totalBlockFromGrpcGateway++
 
 		if s.allHashesFile != nil {
 			record := []string{
-				txHash,
+				blockHash,
 				gatewayTimeReceived.Format(timestampFormat),
 				grpcGatewayTimeReceived.Format(timestampFormat),
 				fmt.Sprintf("%d", timeReceivedDiff.Microseconds()),
 			}
 			if err := s.allHashesFile.Write(record); err != nil {
-				log.Errorf("cannot add txHash %q to all hashes file: %v", txHash, err)
+				log.Errorf("cannot add blockHash %q to all hashes file: %v", blockHash, err)
 			}
 		}
 
 		switch {
 		case gatewayTimeReceived.Before(grpcGatewayTimeReceived):
-			newTxFromGatewayFeedFirst++
-			txSeenByBothFeedsGatewayFirst++
-			txReceivedByGatewayFirstTotalDelta += -timeReceivedDiff.Microseconds()
+			newBlockFromGatewayFeedFirst++
+			blockSeenByBothFeedsGatewayFirst++
+			blockReceivedByGatewayFirstTotalDelta += -timeReceivedDiff.Microseconds()
 		case grpcGatewayTimeReceived.Before(gatewayTimeReceived):
-			newTxFromGrpcGatewayFeedFirst++
-			txSeenByBothFeedsGrpcGatewayFirst++
-			txReceivedByGrpcGatewayFirstTotalDelta += timeReceivedDiff.Microseconds()
+			newBlockFromGrpcGatewayFeedFirst++
+			blockSeenByBothFeedsGrpcGatewayFirst++
+			blockReceivedByGrpcGatewayFirstTotalDelta += timeReceivedDiff.Microseconds()
 		}
 	}
 
 	var (
-		newTxSeenByBothFeeds                 = txSeenByBothFeedsGatewayFirst + txSeenByBothFeedsGrpcGatewayFirst
-		txReceivedByGatewayFirstAvgDelta     = int64(0)
-		txReceivedByGrpcGatewayFirstAvgDelta = int64(0)
-		txPercentageSeenByGatewayFirst       = float64(0)
+		newBlockSeenByBothFeeds                 = blockSeenByBothFeedsGatewayFirst + blockSeenByBothFeedsGrpcGatewayFirst
+		txReceivedByGatewayFirstAvgDelta        = int64(0)
+		blockReceivedByGrpcGatewayFirstAvgDelta = int64(0)
+		blockPercentageSeenByGatewayFirst       = float64(0)
 	)
 
-	if txSeenByBothFeedsGatewayFirst != 0 {
-		txReceivedByGatewayFirstAvgDelta = txReceivedByGatewayFirstTotalDelta / txSeenByBothFeedsGatewayFirst
+	if blockSeenByBothFeedsGatewayFirst != 0 {
+		txReceivedByGatewayFirstAvgDelta = blockReceivedByGatewayFirstTotalDelta / blockSeenByBothFeedsGatewayFirst
 	}
 
-	if txSeenByBothFeedsGrpcGatewayFirst != 0 {
-		txReceivedByGrpcGatewayFirstAvgDelta = txReceivedByGrpcGatewayFirstTotalDelta / txSeenByBothFeedsGrpcGatewayFirst
+	if blockSeenByBothFeedsGrpcGatewayFirst != 0 {
+		blockReceivedByGrpcGatewayFirstAvgDelta = blockReceivedByGrpcGatewayFirstTotalDelta / blockSeenByBothFeedsGrpcGatewayFirst
 	}
 
-	if newTxSeenByBothFeeds != 0 {
-		txPercentageSeenByGatewayFirst = float64(txSeenByBothFeedsGrpcGatewayFirst) / float64(newTxSeenByBothFeeds)
+	if newBlockSeenByBothFeeds != 0 {
+		blockPercentageSeenByGatewayFirst = float64(blockSeenByBothFeedsGrpcGatewayFirst) / float64(newBlockSeenByBothFeeds)
 	}
 
-	var timeAverage = txPercentageSeenByGatewayFirst*float64(txReceivedByGrpcGatewayFirstAvgDelta) - (1-txPercentageSeenByGatewayFirst)*float64(txReceivedByGatewayFirstAvgDelta)
+	var timeAverage = blockPercentageSeenByGatewayFirst*float64(blockReceivedByGrpcGatewayFirstAvgDelta) - (1-blockPercentageSeenByGatewayFirst)*float64(txReceivedByGatewayFirstAvgDelta)
 	results := fmt.Sprintf(
-		"\nAnalysis of Transactions received on both feeds:\n"+
-			"Number of transactions: %d\n"+
-			"Number of transactions received from gRPC connection first: %d\n"+
-			"Number of transactions received from websocket connection first: %d\n"+
-			"Percentage of transactions seen first from gRPC connection: %.2f%%\n"+
-			"Average time difference for transactions received first from gRPC connection (us): %d\n"+
-			"Average time difference for transactions received first from websocket connection (us): %d\n"+
+		"\nAnalysis of Blocks received on both feeds:\n"+
+			"Number of blocks: %d\n"+
+			"Number of blocks received from gRPC connection first: %d\n"+
+			"Number of blocks received from websocket connection first: %d\n"+
+			"Percentage of blocks seen first from gRPC connection: %.2f%%\n"+
+			"Average time difference for blocks received first from gRPC connection (us): %d\n"+
+			"Average time difference for blocks received first from websocket connection (us): %d\n"+
 			"Final calculation (us): %.2f\n"+
-			"\nTotal Transactions summary:\n"+
-			"Total tx from gRPC connection: %d\n"+
-			"Total tx from ws connection: %d\n"+
-			"Number of low fee tx ignored: %d\n",
-
-		newTxSeenByBothFeeds,
-		txSeenByBothFeedsGrpcGatewayFirst,
-		txSeenByBothFeedsGatewayFirst,
-		txPercentageSeenByGatewayFirst*100,
-		txReceivedByGrpcGatewayFirstAvgDelta,
+			"\nTotal Blocks summary:\n"+
+			"Total blocks from gRPC connection: %d\n"+
+			"Total blocks from ws connection: %d\n",
+		newBlockSeenByBothFeeds,
+		blockSeenByBothFeedsGrpcGatewayFirst,
+		blockSeenByBothFeedsGatewayFirst,
+		blockPercentageSeenByGatewayFirst*100,
+		blockReceivedByGrpcGatewayFirstAvgDelta,
 		txReceivedByGatewayFirstAvgDelta,
 		timeAverage,
-		totalTxFromGrpcGateway,
-		totalTxFromGateway,
-		len(s.lowFeeHashes))
+		totalBlockFromGrpcGateway,
+		totalBlockFromGateway)
 
 	verboseResults := fmt.Sprintf(
-		"Number of high delta tx ignored: %d\n"+
-			"Number of new transactions received first from gRPC connection: %d\n"+
-			"Number of new transactions received first from websocket connection: %d\n"+
-			"Total number of transactions seen: %d\n",
-		len(s.highDeltaHashes),
-		newTxFromGrpcGatewayFeedFirst,
-		newTxFromGatewayFeedFirst,
-		newTxFromGrpcGatewayFeedFirst+newTxFromGatewayFeedFirst,
+		"Number of new blocks received first from gRPC connection: %d\n"+
+			"Number of new blocks received first from websocket connection: %d\n"+
+			"Total number of blocks seen: %d\n",
+		newBlockFromGrpcGatewayFeedFirst,
+		newBlockFromGatewayFeedFirst,
+		newBlockFromGrpcGatewayFeedFirst+newBlockFromGatewayFeedFirst,
 	)
 
 	if verbose {
@@ -523,15 +454,13 @@ func (s *TxGrpcWSCompareService) stats(ignoreDelta int, verbose bool) string {
 	return results
 }
 
-func (s *TxGrpcWSCompareService) readFeedFromBX(
+func (s *BlockGrpcWSCompareService) readFeedFromBX(
 	ctx context.Context,
 	wg *sync.WaitGroup,
 	out chan<- *message,
 	uri string,
 	authHeader string,
-	excDuplicates bool,
-	excFromBlockchain bool,
-	useGoGateway bool,
+	excludeBlockContents bool,
 ) {
 	defer wg.Done()
 
@@ -549,8 +478,7 @@ func (s *TxGrpcWSCompareService) readFeedFromBX(
 		}
 	}()
 
-	sub, err := conn.SubscribeTxFeedBX(1, s.feedName, s.excTxContents, !excDuplicates,
-		!excFromBlockchain, useGoGateway)
+	sub, err := conn.SubscribeBkFeedBX(1, s.feedName, excludeBlockContents)
 	if err != nil {
 		log.Errorf("cannot subscribe to feed %q: %v", s.feedName, err)
 		return
@@ -563,11 +491,18 @@ func (s *TxGrpcWSCompareService) readFeedFromBX(
 	}()
 
 	for {
+		feedData, err := sub.NextMessage()
+		var feedResponse bxBkFeedResponse
+		if err := json.Unmarshal(feedData, &feedResponse); err != nil {
+			log.Errorf("failed to unmarshal block message: %v", err)
+			continue
+		}
+
+		blockHash := feedResponse.Params.Result.Hash
 		var (
-			data, err    = sub.NextMessage()
 			timeReceived = time.Now()
 			msg          = &message{
-				bytes:        data,
+				hash:         blockHash,
 				err:          err,
 				timeReceived: timeReceived,
 			}
@@ -581,7 +516,7 @@ func (s *TxGrpcWSCompareService) readFeedFromBX(
 	}
 }
 
-func (s *TxGrpcWSCompareService) clearTrailNewHashes() {
+func (s *BlockGrpcWSCompareService) clearTrailNewHashes() {
 	done := make(chan struct{})
 	go func() {
 		s.handlers <- func() error {
@@ -593,7 +528,7 @@ func (s *TxGrpcWSCompareService) clearTrailNewHashes() {
 	<-done
 }
 
-func (s *TxGrpcWSCompareService) drainChannels() {
+func (s *BlockGrpcWSCompareService) drainChannels() {
 	done := make(chan struct{})
 	go func() {
 		for len(s.hashes) > 0 {
@@ -609,7 +544,7 @@ func (s *TxGrpcWSCompareService) drainChannels() {
 	<-done
 }
 
-func (s *TxGrpcWSCompareService) readFeedFromGRPC(ctx context.Context, wg *sync.WaitGroup, out chan<- *message, uri string) {
+func (s *BlockGrpcWSCompareService) readFeedFromGRPC(ctx context.Context, wg *sync.WaitGroup, out chan<- *message, uri string) {
 	defer wg.Done()
 
 	log.Infof("Initiating connection to GRPC %v", uri)
@@ -624,10 +559,11 @@ func (s *TxGrpcWSCompareService) readFeedFromGRPC(ctx context.Context, wg *sync.
 
 	log.Infof("Connection to %s established", uri)
 	switch s.feedName {
-	case "newTxs":
-		stream, err := client.NewTxs(callContext, &pb.NewTxsRequest{Filters: ""})
+	case "newBlocks":
+		stream, err := client.NewBlocks(callContext, &pb.BlocksRequest{})
 		if err != nil {
-			log.Errorf("could not create newTxs %v", err)
+			log.Errorf("could not create newBlocks %v", err)
+			os.Exit(1)
 		}
 		for {
 			data, err := stream.Recv()
@@ -638,7 +574,7 @@ func (s *TxGrpcWSCompareService) readFeedFromGRPC(ctx context.Context, wg *sync.
 			if data != nil {
 				var (
 					msg = &message{
-						hash:         data.Tx[0].Hash,
+						hash:         data.Hash,
 						err:          err,
 						timeReceived: timeReceived,
 					}
@@ -651,10 +587,11 @@ func (s *TxGrpcWSCompareService) readFeedFromGRPC(ctx context.Context, wg *sync.
 				}
 			}
 		}
-	case "pendingTxs":
-		stream, err := client.PendingTxs(callContext, &pb.PendingTxsRequest{Filters: ""})
+	case "bdnBlocks":
+		stream, err := client.BdnBlocks(callContext, &pb.BlocksRequest{})
 		if err != nil {
-			log.Errorf("could not create pendingTxs %v", err)
+			log.Errorf("could not create bdnBlocks %v", err)
+			os.Exit(1)
 		}
 		for {
 			data, err := stream.Recv()
@@ -665,7 +602,7 @@ func (s *TxGrpcWSCompareService) readFeedFromGRPC(ctx context.Context, wg *sync.
 			if data != nil {
 				var (
 					msg = &message{
-						hash:         data.Tx[0].Hash,
+						hash:         data.Hash,
 						err:          err,
 						timeReceived: timeReceived,
 					}
@@ -679,7 +616,7 @@ func (s *TxGrpcWSCompareService) readFeedFromGRPC(ctx context.Context, wg *sync.
 			}
 		}
 	default:
-		log.Errorf("invalid feed name provided")
+		log.Errorf("feed name %v is not recognized", s.feedName)
 		os.Exit(1)
 	}
 }

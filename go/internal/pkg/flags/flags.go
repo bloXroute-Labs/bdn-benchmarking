@@ -62,7 +62,7 @@ var (
 		Usage: "seconds to wait before starting to compare feeds",
 		Value: 60,
 	}
-	TxTrailTime = &cli.IntFlag{
+	TrailTime = &cli.IntFlag{
 		Name:  "trail-time",
 		Usage: "seconds to wait after interval to receive tx on both feeds",
 		Value: 60,
