@@ -5,6 +5,7 @@ go 1.18
 require (
 	github.com/ethereum/go-ethereum v1.10.18
 	github.com/gorilla/websocket v1.5.0
+	github.com/influxdata/influxdb v1.8.3
 	github.com/sirupsen/logrus v1.8.1
 	github.com/urfave/cli/v2 v2.6.0
 	google.golang.org/grpc v1.50.1

@@ -6,6 +6,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"github.com/influxdata/influxdb/pkg/slices"
 	log "github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 	"math"
@@ -38,10 +39,10 @@ type TxFeedsCompareService struct {
 	timeToEndComparison   time.Time
 	numIntervals          int
 
-	excTxContents bool
-	minGasPrice   *float64
-	addresses     utils.HashSet
-	feedName      string
+	includes    []string
+	minGasPrice *float64
+	addresses   utils.HashSet
+	feedName    string
 
 	allHashesFile     *csv.Writer
 	missingHashesFile *bufio.Writer
@@ -77,11 +78,16 @@ func (s *TxFeedsCompareService) Run(c *cli.Context) error {
 		}
 	}
 
-	s.excTxContents = c.Bool(flags.ExcludeTxContents.Name)
+	s.includes = c.StringSlice(flags.Include.Name)
 
-	if (s.minGasPrice != nil || len(s.addresses) > 0) && s.excTxContents {
+	if s.minGasPrice != nil && !slices.Exists(s.includes, "tx_contents.gas_price") {
 		return fmt.Errorf(
-			"error: if filtering by minimum gas price or addresses, exclude-tx-contents must be false")
+			"error: if filtering by addresses, tx_contents.to or tx_contents.gas_price must be included")
+	}
+
+	if len(s.addresses) > 0 && !slices.Exists(s.includes, "tx_contents.from") {
+		return fmt.Errorf(
+			"error: if filtering by addresses, tx_contents.to or tx_contents.from must be included")
 	}
 
 	if s.minGasPrice != nil {
@@ -191,7 +197,7 @@ func (s *TxFeedsCompareService) Run(c *cli.Context) error {
 	}
 	go s.readFeedFromEth(ctx, &readerGroup, s.ethCh, ethURI)
 
-	if !s.excTxContents {
+	if s.includes != nil {
 		const totalReaders = 4
 		for i := 0; i < totalReaders; i++ {
 			readerGroup.Add(1)
@@ -327,12 +333,13 @@ func (s *TxFeedsCompareService) processFeedFromBX(data *message) error {
 		return nil
 	}
 
-	if !s.excTxContents {
+	if slices.Exists(s.includes, "tx_contents.to") {
 		to := msg.Params.Result.TxContents.To
 		if !s.addresses.Empty() && to != nil && !s.addresses.Contains(*to) {
 			return nil
 		}
-
+	}
+	if slices.Exists(s.includes, "tx_contents.gas_price") {
 		if price := msg.Params.Result.TxContents.GasPrice; s.minGasPrice != nil && price != nil {
 			gasPrice, err := parseGasPrice(*price)
 			if err != nil {
@@ -387,7 +394,7 @@ func (s *TxFeedsCompareService) processFeedFromEth(data *message) error {
 		return nil
 	}
 
-	if !s.excTxContents {
+	if s.includes != nil {
 		go func() { s.hashes <- txHash }()
 	} else if entry, ok := s.seenHashes[txHash]; ok {
 		if entry.ethTimeReceived.IsZero() {
@@ -639,7 +646,7 @@ func (s *TxFeedsCompareService) readFeedFromBX(
 		}
 	}()
 
-	sub, err := conn.SubscribeTxFeedBX(1, s.feedName, s.excTxContents, !excDuplicates,
+	sub, err := conn.SubscribeTxFeedBX(1, s.feedName, s.includes, !excDuplicates,
 		!excFromBlockchain, useGoGateway)
 	if err != nil {
 		log.Errorf("cannot subscribe to feed %q: %v", s.feedName, err)

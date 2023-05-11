@@ -7,7 +7,7 @@ var (
 	Gateway = &cli.StringFlag{
 		Name:  "gateway",
 		Usage: "gateway websocket connection string",
-		Value: "ws://127.0.0.1:28333/ws",
+		Value: "ws://127.0.0.1:28335/ws",
 	}
 	GatewayGrpc = &cli.StringFlag{
 		Name:  "gateway-grpc",
@@ -36,6 +36,10 @@ var (
 	Addresses = &cli.StringFlag{
 		Name:  "addresses",
 		Usage: "comma separated list of Ethereum addresses",
+	}
+	Include = &cli.StringSliceFlag{
+		Name:  "include",
+		Usage: "fields to include in stream",
 	}
 	ExcludeTxContents = &cli.BoolFlag{
 		Name:  "exclude-tx-contents",

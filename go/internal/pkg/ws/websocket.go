@@ -38,7 +38,7 @@ func (c *Connection) SubscribeTxFeedEth(id int) (*Subscription, error) {
 func (c *Connection) SubscribeTxFeedBX(
 	id int,
 	feedName string,
-	excTxContents bool,
+	includes []string,
 	duplicates bool,
 	includeFromBlockchain bool,
 	useLightGateway bool,
@@ -47,7 +47,7 @@ func (c *Connection) SubscribeTxFeedBX(
 		newSubTxFeedRequestBX(
 			id,
 			feedName,
-			excTxContents,
+			includes,
 			duplicates,
 			includeFromBlockchain,
 			useLightGateway),
@@ -206,7 +206,7 @@ func newSubTxFeedRequestEth(id int) *Request {
 func newSubTxFeedRequestBX(
 	id int,
 	feedName string,
-	excTxContents bool,
+	includes []string,
 	duplicates bool,
 	incFromBlockchain bool,
 	useGoGateway bool,
@@ -218,7 +218,7 @@ func newSubTxFeedRequestBX(
 		options["include_from_blockchain"] = incFromBlockchain
 	}
 
-	options["include"] = []string{}
+	options["include"] = includes
 	options["filters"] = ""
 
 	return NewRequest(id, "subscribe", []interface{}{
@@ -236,7 +236,7 @@ func newSubBkFeedRequestBX(id int, feedName string, excBkContents bool) *Request
 	options := make(map[string]interface{})
 
 	if excBkContents {
-		options["include"] = []string{"hash", "header"}
+		options["include"] = []string{"hash", "header", "future_validator_info"}
 	} else {
 		options["include"] = []string{"hash", "header", "transactions", "uncles", "future_validator_info"}
 	}

@@ -18,8 +18,8 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type GatewayClient interface {
-	NewTxs(ctx context.Context, in *NewTxsRequest, opts ...grpc.CallOption) (Gateway_NewTxsClient, error)
-	PendingTxs(ctx context.Context, in *PendingTxsRequest, opts ...grpc.CallOption) (Gateway_PendingTxsClient, error)
+	NewTxs(ctx context.Context, in *TxsRequest, opts ...grpc.CallOption) (Gateway_NewTxsClient, error)
+	PendingTxs(ctx context.Context, in *TxsRequest, opts ...grpc.CallOption) (Gateway_PendingTxsClient, error)
 	NewBlocks(ctx context.Context, in *BlocksRequest, opts ...grpc.CallOption) (Gateway_NewBlocksClient, error)
 	BdnBlocks(ctx context.Context, in *BlocksRequest, opts ...grpc.CallOption) (Gateway_BdnBlocksClient, error)
 }
@@ -32,7 +32,7 @@ func NewGatewayClient(cc grpc.ClientConnInterface) GatewayClient {
 	return &gatewayClient{cc}
 }
 
-func (c *gatewayClient) NewTxs(ctx context.Context, in *NewTxsRequest, opts ...grpc.CallOption) (Gateway_NewTxsClient, error) {
+func (c *gatewayClient) NewTxs(ctx context.Context, in *TxsRequest, opts ...grpc.CallOption) (Gateway_NewTxsClient, error) {
 	stream, err := c.cc.NewStream(ctx, &Gateway_ServiceDesc.Streams[0], "/gateway.Gateway/NewTxs", opts...)
 	if err != nil {
 		return nil, err
@@ -48,7 +48,7 @@ func (c *gatewayClient) NewTxs(ctx context.Context, in *NewTxsRequest, opts ...g
 }
 
 type Gateway_NewTxsClient interface {
-	Recv() (*NewTxsReply, error)
+	Recv() (*TxsReply, error)
 	grpc.ClientStream
 }
 
@@ -56,15 +56,15 @@ type gatewayNewTxsClient struct {
 	grpc.ClientStream
 }
 
-func (x *gatewayNewTxsClient) Recv() (*NewTxsReply, error) {
-	m := new(NewTxsReply)
+func (x *gatewayNewTxsClient) Recv() (*TxsReply, error) {
+	m := new(TxsReply)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
 	return m, nil
 }
 
-func (c *gatewayClient) PendingTxs(ctx context.Context, in *PendingTxsRequest, opts ...grpc.CallOption) (Gateway_PendingTxsClient, error) {
+func (c *gatewayClient) PendingTxs(ctx context.Context, in *TxsRequest, opts ...grpc.CallOption) (Gateway_PendingTxsClient, error) {
 	stream, err := c.cc.NewStream(ctx, &Gateway_ServiceDesc.Streams[1], "/gateway.Gateway/PendingTxs", opts...)
 	if err != nil {
 		return nil, err
@@ -80,7 +80,7 @@ func (c *gatewayClient) PendingTxs(ctx context.Context, in *PendingTxsRequest, o
 }
 
 type Gateway_PendingTxsClient interface {
-	Recv() (*PendingTxsReply, error)
+	Recv() (*TxsReply, error)
 	grpc.ClientStream
 }
 
@@ -88,8 +88,8 @@ type gatewayPendingTxsClient struct {
 	grpc.ClientStream
 }
 
-func (x *gatewayPendingTxsClient) Recv() (*PendingTxsReply, error) {
-	m := new(PendingTxsReply)
+func (x *gatewayPendingTxsClient) Recv() (*TxsReply, error) {
+	m := new(TxsReply)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
@@ -164,8 +164,8 @@ func (x *gatewayBdnBlocksClient) Recv() (*BlocksReply, error) {
 // All implementations must embed UnimplementedGatewayServer
 // for forward compatibility
 type GatewayServer interface {
-	NewTxs(*NewTxsRequest, Gateway_NewTxsServer) error
-	PendingTxs(*PendingTxsRequest, Gateway_PendingTxsServer) error
+	NewTxs(*TxsRequest, Gateway_NewTxsServer) error
+	PendingTxs(*TxsRequest, Gateway_PendingTxsServer) error
 	NewBlocks(*BlocksRequest, Gateway_NewBlocksServer) error
 	BdnBlocks(*BlocksRequest, Gateway_BdnBlocksServer) error
 	mustEmbedUnimplementedGatewayServer()
@@ -175,10 +175,10 @@ type GatewayServer interface {
 type UnimplementedGatewayServer struct {
 }
 
-func (UnimplementedGatewayServer) NewTxs(*NewTxsRequest, Gateway_NewTxsServer) error {
+func (UnimplementedGatewayServer) NewTxs(*TxsRequest, Gateway_NewTxsServer) error {
 	return status.Errorf(codes.Unimplemented, "method NewTxs not implemented")
 }
-func (UnimplementedGatewayServer) PendingTxs(*PendingTxsRequest, Gateway_PendingTxsServer) error {
+func (UnimplementedGatewayServer) PendingTxs(*TxsRequest, Gateway_PendingTxsServer) error {
 	return status.Errorf(codes.Unimplemented, "method PendingTxs not implemented")
 }
 func (UnimplementedGatewayServer) NewBlocks(*BlocksRequest, Gateway_NewBlocksServer) error {
@@ -201,7 +201,7 @@ func RegisterGatewayServer(s grpc.ServiceRegistrar, srv GatewayServer) {
 }
 
 func _Gateway_NewTxs_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(NewTxsRequest)
+	m := new(TxsRequest)
 	if err := stream.RecvMsg(m); err != nil {
 		return err
 	}
@@ -209,7 +209,7 @@ func _Gateway_NewTxs_Handler(srv interface{}, stream grpc.ServerStream) error {
 }
 
 type Gateway_NewTxsServer interface {
-	Send(*NewTxsReply) error
+	Send(*TxsReply) error
 	grpc.ServerStream
 }
 
@@ -217,12 +217,12 @@ type gatewayNewTxsServer struct {
 	grpc.ServerStream
 }
 
-func (x *gatewayNewTxsServer) Send(m *NewTxsReply) error {
+func (x *gatewayNewTxsServer) Send(m *TxsReply) error {
 	return x.ServerStream.SendMsg(m)
 }
 
 func _Gateway_PendingTxs_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(PendingTxsRequest)
+	m := new(TxsRequest)
 	if err := stream.RecvMsg(m); err != nil {
 		return err
 	}
@@ -230,7 +230,7 @@ func _Gateway_PendingTxs_Handler(srv interface{}, stream grpc.ServerStream) erro
 }
 
 type Gateway_PendingTxsServer interface {
-	Send(*PendingTxsReply) error
+	Send(*TxsReply) error
 	grpc.ServerStream
 }
 
@@ -238,7 +238,7 @@ type gatewayPendingTxsServer struct {
 	grpc.ServerStream
 }
 
-func (x *gatewayPendingTxsServer) Send(m *PendingTxsReply) error {
+func (x *gatewayPendingTxsServer) Send(m *TxsReply) error {
 	return x.ServerStream.SendMsg(m)
 }
 

@@ -5,15 +5,15 @@ option go_package = "github.com/bloXroute-Labs/bxgateway-private-go/bxgateway/ga
 // The gateway service definition.
 package  gateway;
 service Gateway {
-  rpc NewTxs (NewTxsRequest) returns (stream NewTxsReply){}
-  rpc PendingTxs (PendingTxsRequest) returns (stream PendingTxsReply){}
+  rpc NewTxs (TxsRequest) returns (stream TxsReply){}
+  rpc PendingTxs (TxsRequest) returns (stream TxsReply){}
   rpc NewBlocks (BlocksRequest) returns (stream BlocksReply){}
   rpc BdnBlocks (BlocksRequest) returns (stream BlocksReply){}
-
 }
 
-message NewTxsRequest{
+message TxsRequest{
   string filters = 1;
+  repeated string includes = 2;
 }
 
 message Tx{
@@ -63,19 +63,13 @@ message BlockTx{
   repeated AccessTuple access_list = 16;
 }
 
-message NewTxsReply{
+message TxsReply{
   repeated Tx tx = 1;
 }
 
-message PendingTxsRequest{
-  string filters = 1;
+message BlocksRequest{
+  repeated string includes = 1;
 }
-
-message PendingTxsReply{
-  repeated Tx tx = 1;
-}
-
-message BlocksRequest{}
 
 message BlockHeader{
   string parent_hash = 1;
