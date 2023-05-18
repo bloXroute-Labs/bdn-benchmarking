@@ -137,7 +137,7 @@ func (s *BlockGrpcWSCompareService) Run(c *cli.Context) error {
 
 	readerGroup.Add(2)
 
-	go s.readFeedFromGRPC(ctx, &readerGroup, s.bxGrpcCh, c.String(flags.GatewayGrpc.Name))
+	go s.readFeedFromGRPC(ctx, &readerGroup, s.bxGrpcCh, c.String(flags.GatewayGrpc.Name), c.Bool(flags.ExcludeBkContents.Name))
 
 	if c.Bool(flags.UseCloudAPI.Name) {
 		go s.readFeedFromBX(
@@ -544,7 +544,7 @@ func (s *BlockGrpcWSCompareService) drainChannels() {
 	<-done
 }
 
-func (s *BlockGrpcWSCompareService) readFeedFromGRPC(ctx context.Context, wg *sync.WaitGroup, out chan<- *message, uri string) {
+func (s *BlockGrpcWSCompareService) readFeedFromGRPC(ctx context.Context, wg *sync.WaitGroup, out chan<- *message, uri string, excludeBkContents bool) {
 	defer wg.Done()
 
 	log.Infof("Initiating connection to GRPC %v", uri)
@@ -558,9 +558,15 @@ func (s *BlockGrpcWSCompareService) readFeedFromGRPC(ctx context.Context, wg *sy
 	defer cancel()
 
 	log.Infof("Connection to %s established", uri)
+
+	var includes []string
+	if excludeBkContents {
+		includes = []string{"hash", "header", "future_validator_info"}
+	}
+
 	switch s.feedName {
 	case "newBlocks":
-		stream, err := client.NewBlocks(callContext, &pb.BlocksRequest{})
+		stream, err := client.NewBlocks(callContext, &pb.BlocksRequest{Includes: includes})
 		if err != nil {
 			log.Errorf("could not create newBlocks %v", err)
 			os.Exit(1)
@@ -588,7 +594,7 @@ func (s *BlockGrpcWSCompareService) readFeedFromGRPC(ctx context.Context, wg *sy
 			}
 		}
 	case "bdnBlocks":
-		stream, err := client.BdnBlocks(callContext, &pb.BlocksRequest{})
+		stream, err := client.BdnBlocks(callContext, &pb.BlocksRequest{Includes: includes})
 		if err != nil {
 			log.Errorf("could not create bdnBlocks %v", err)
 			os.Exit(1)

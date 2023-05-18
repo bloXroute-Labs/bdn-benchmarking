@@ -632,9 +632,7 @@ func (s *TxGrpcWSCompareService) readFeedFromGRPC(ctx context.Context, wg *sync.
 	log.Infof("Connection to %s established", uri)
 	switch s.feedName {
 	case "newTxs":
-		stream, err := client.NewTxs(callContext, &pb.TxsRequest{Filters: "",
-			//Includes: []string{"tx_hash", "tx_contents.v", "tx_contents.from", "tx_contents.to", "tx_contents.r", "tx_contents.s", "tx_contents.value", "tx_contents.input", "tx_contents.raw_tx", "tx_contents.chain_id", "tx_contents.nonce"}
-		})
+		stream, err := client.NewTxs(callContext, &pb.TxsRequest{Filters: "", Includes: s.includes})
 		if err != nil {
 			log.Errorf("could not create newTxs %v", err)
 		}
