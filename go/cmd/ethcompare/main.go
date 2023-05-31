@@ -154,6 +154,18 @@ func main() {
 				},
 				Action: cmptxspeed.NewTxSpeedCompareService().Run,
 			},
+			{
+				Name:  "txsmevlink-v2",
+				Usage: "",
+				Flags: []cli.Flag{
+					flags.Gateway,
+					flags.AuthHeader,
+					flags.MEVLinkAPIKey,
+					flags.MEVLinkAPISecret,
+					flags.Interval,
+				},
+				Action: cmpfeeds.NewMevlinkV2Compare().Run,
+			},
 		},
 	}
 
