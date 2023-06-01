@@ -114,7 +114,7 @@ func readFeedFromGateway(ctx context.Context, url, authHeader string, result map
 		log.Fatalf("cannot establish connection to: %v", err)
 	}
 
-	subRequest := `{"id": 1, "method": "subscribe", "params": ["newTxs", {"include": ["raw_tx"]}]}`
+	subRequest := `{"id": 1, "method": "subscribe", "params": ["newTxs", {"include": ["raw_tx"],"duplicates":false,"include_from_blockchain":true}]}`
 	err = wsSubscriber.WriteMessage(websocket.TextMessage, []byte(subRequest))
 	if err != nil {
 		log.Fatalf("cannot subscribe to gateway feed: %v", err)
