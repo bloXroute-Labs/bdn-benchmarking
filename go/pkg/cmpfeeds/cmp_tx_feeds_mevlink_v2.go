@@ -65,7 +65,7 @@ func (m *MevlinkV2Compare) Run(c *cli.Context) error {
 	}
 
 	for hash, timestamps := range uniqueTransactions {
-		timeDiff := strconv.FormatInt(timestamps.Mevlink.Sub(timestamps.Gateway).Milliseconds(), 10)
+		timeDiff := strconv.FormatInt(timestamps.Gateway.Sub(timestamps.Mevlink).Milliseconds(), 10)
 		record := []string{hash, timestamps.Gateway.Format(timeLayout), timestamps.Mevlink.Format(timeLayout), timeDiff}
 		if err = csvFile.Write(record); err != nil {
 			log.Errorf("failed to wriute data to CSV: %v", err)
