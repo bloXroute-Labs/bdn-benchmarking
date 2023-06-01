@@ -71,7 +71,7 @@ func (m *MevlinkV2Compare) Run(c *cli.Context) error {
 		totalTimeDiff += timeDiff
 		record := []string{hash, timestamps.Gateway.Format(timeLayout), timestamps.Mevlink.Format(timeLayout), strconv.FormatInt(timeDiff, 10)}
 		if err = csvFile.Write(record); err != nil {
-			log.Errorf("failed to wriute data to CSV: %v", err)
+			log.Errorf("failed to write data to CSV: %v", err)
 			continue
 		}
 	}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/gorilla/websocket"
+	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net/http"
 	"strings"
@@ -247,6 +248,7 @@ func newSubBkFeedRequestBX(id int, feedName string, excBkContents bool) *Request
 
 // NewRequest is a convenience method to create a Request struct.
 func NewRequest(id int, method string, params []interface{}) *Request {
+	log.Info(params)
 	return &Request{
 		JSONRPC: "2.0",
 		ID:      id,
