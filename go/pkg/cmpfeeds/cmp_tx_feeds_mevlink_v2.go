@@ -64,9 +64,12 @@ func (m *MevlinkV2Compare) Run(c *cli.Context) error {
 		log.Fatalf("failed to write CSV header: %v", err)
 	}
 
+	var totalTimeDiff int64 = 0
+
 	for hash, timestamps := range uniqueTransactions {
-		timeDiff := strconv.FormatInt(timestamps.Gateway.Sub(timestamps.Mevlink).Milliseconds(), 10)
-		record := []string{hash, timestamps.Gateway.Format(timeLayout), timestamps.Mevlink.Format(timeLayout), timeDiff}
+		timeDiff := timestamps.Gateway.Sub(timestamps.Mevlink).Milliseconds()
+		totalTimeDiff += timeDiff
+		record := []string{hash, timestamps.Gateway.Format(timeLayout), timestamps.Mevlink.Format(timeLayout), strconv.FormatInt(timeDiff, 10)}
 		if err = csvFile.Write(record); err != nil {
 			log.Errorf("failed to wriute data to CSV: %v", err)
 			continue
@@ -76,6 +79,8 @@ func (m *MevlinkV2Compare) Run(c *cli.Context) error {
 	csvFile.Flush()
 
 	log.Info("Done")
+	log.Infof("Gateway is faster then MEVLink by (ms): %v", float64(totalTimeDiff)/float64(len(uniqueTransactions)))
+
 	return nil
 }
 
