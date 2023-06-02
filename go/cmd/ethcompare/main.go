@@ -61,6 +61,22 @@ func main() {
 				Action: cmpfeeds.NewBkFeedsCompareService().Run,
 			},
 			{
+				Name:  "txfilter",
+				Usage: "filters transactions coming from BX gateway based on addresses",
+				Flags: []cli.Flag{
+					flags.Gateway,
+					flags.BkFeedName,
+					flags.ExcludeBkContents,
+					flags.Dump,
+					flags.UseCloudAPI,
+					flags.AuthHeader,
+					flags.CloudAPIWSURI,
+					flags.Interval,
+					flags.TrailTime,
+				},
+				Action: cmpfeeds.NewTxFilterService().Run,
+			},
+			{
 				Name: "txspeed",
 				Usage: "compares sending tx speed by submitting conflicting txs with the same nonce " +
 					"to node and gateway, so only one tx will land on chain",
