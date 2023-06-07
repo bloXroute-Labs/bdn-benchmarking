@@ -127,7 +127,7 @@ func (s *TxFeedsCompareMEVLinkService) Run(c *cli.Context) error {
 			s.allHashesFile = csv.NewWriter(file)
 
 			if err := s.allHashesFile.Write([]string{
-				"TxHash", "BloXRoute Time", "MEVLink Time", "Time Diff", "Mined In The Block",
+				"TxHash", "BloXRoute Time", "MEVLink Time", "Time Diff",
 			}); err != nil {
 				return fmt.Errorf("cannot write CSV header of file %q: %v", fileName, err)
 			}
@@ -493,7 +493,6 @@ func (s *TxFeedsCompareMEVLinkService) stats(ignoreDelta int, verbose bool) stri
 				gatewayTimeReceived.Format(timestampFormat),
 				mevLinkTimeReceived.Format(timestampFormat),
 				fmt.Sprintf("%d", timeReceivedDiff.Microseconds()),
-				"1",
 			}
 
 			if err := s.allHashesFile.Write(record); err != nil {
