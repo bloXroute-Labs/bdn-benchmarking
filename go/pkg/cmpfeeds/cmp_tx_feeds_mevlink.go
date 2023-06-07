@@ -203,7 +203,7 @@ func (s *TxFeedsCompareMEVLinkService) Run(c *cli.Context) error {
 		s.mevLinkCh,
 		c.String(flags.MEVLinkAPIKey.Name),
 		c.String(flags.MEVLinkAPISecret.Name),
-		c.Int(flags.MEVLinkNetworkNumber.Name),
+		c.Int(flags.NetworkNumber.Name),
 	)
 
 	go s.readBlockFeedFromBX(
