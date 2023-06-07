@@ -627,6 +627,7 @@ func (s *TxFeedsCompareMEVLinkService) readFeedFromBX(
 
 		select {
 		case <-ctx.Done():
+			log.Info("Stop gateway feed")
 			return
 		case out <- msg:
 		}
@@ -731,7 +732,7 @@ func (s *TxFeedsCompareMEVLinkService) readBlockFeedFromBX(
 
 		select {
 		case <-ctx.Done():
-			log.Info("Stop gateway feed")
+			log.Info("Stop blocks feed")
 			return
 		case out <- msg:
 		}
