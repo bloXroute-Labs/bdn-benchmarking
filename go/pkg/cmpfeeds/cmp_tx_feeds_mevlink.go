@@ -641,10 +641,12 @@ func helper(txb []byte, hash mlstreamer.NullableHash, noticed, propagated time.T
 	//var tx_hash = hasher.Sum(nil)
 
 	//hashStr := hex.EncodeToString(tx_hash)
+	timeReceived := time.Now()
+
 	msg := &message{
 		bytes:        txb,
 		err:          nil,
-		timeReceived: propagated,
+		timeReceived: timeReceived,
 	}
 	mevLinkCh <- msg
 	//log.Infof("Got tx '" + hashStr + "'! Was noticed on ", noticed, "and sent on", propagated)
