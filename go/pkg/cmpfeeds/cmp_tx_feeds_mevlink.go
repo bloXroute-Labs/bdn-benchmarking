@@ -492,9 +492,10 @@ func (s *TxFeedsCompareMEVLinkService) stats(ignoreDelta int, verbose bool) stri
 				txHash,
 				gatewayTimeReceived.Format(timestampFormat),
 				mevLinkTimeReceived.Format(timestampFormat),
-				fmt.Sprintf("%d", timeReceivedDiff.Milliseconds()),
+				fmt.Sprintf("%d", timeReceivedDiff.Microseconds()),
 				"1",
 			}
+
 			if err := s.allHashesFile.Write(record); err != nil {
 				log.Errorf("cannot add txHash %q to all hashes file: %v", txHash, err)
 			}
