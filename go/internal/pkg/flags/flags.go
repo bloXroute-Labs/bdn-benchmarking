@@ -172,4 +172,9 @@ var (
 		Name:  "mevLink-api-secret",
 		Usage: "mevLink api secret",
 	}
+	MEVLinkNetworkNumber = &cli.IntFlag{
+		Name:  "mevlink-network-num",
+		Usage: "mevlink network number, 1 for ETH(default), 56 for BSC",
+		Value: 1,
+	}
 )
