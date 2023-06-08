@@ -116,6 +116,7 @@ func main() {
 					flags.CloudAPIWSURI,
 					flags.AuthHeader,
 					flags.UseGoGateway,
+					flags.UseGRPCFeed,
 				},
 				Action: cmpfeeds.NewTxFeedsCompareMEVLinkService().Run,
 			},
