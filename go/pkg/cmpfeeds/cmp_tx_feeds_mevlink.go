@@ -23,8 +23,6 @@ import (
 	"time"
 )
 
-var mevLinkCh chan *message
-
 // TxFeedsCompareMEVLinkService represents a service which compares transaction feeds time difference
 // between mevlink gateway and BX cloud services.
 type TxFeedsCompareMEVLinkService struct {
@@ -33,11 +31,8 @@ type TxFeedsCompareMEVLinkService struct {
 	bxCh      chan *message
 	bxBlockCh chan *message
 
-	hashes chan string
-
 	trailNewHashes        utils.HashSet
 	leadNewHashes         utils.HashSet
-	lowFeeHashes          utils.HashSet
 	highDeltaHashes       utils.HashSet
 	seenHashes            map[string]*hashEntry
 	timeToBeginComparison time.Time
@@ -59,22 +54,21 @@ type TxFeedsCompareMEVLinkService struct {
 func NewTxFeedsCompareMEVLinkService() *TxFeedsCompareMEVLinkService {
 	const bufSize = 8192
 	return &TxFeedsCompareMEVLinkService{
-		handlers:        make(chan handler),
-		bxCh:            make(chan *message),
-		mevLinkCh:       make(chan *message),
-		bxBlockCh:       make(chan *message),
-		hashes:          make(chan string, bufSize),
-		lowFeeHashes:    utils.NewHashSet(),
+		handlers:  make(chan handler),
+		bxCh:      make(chan *message, 10000),
+		mevLinkCh: make(chan *message, 10000),
+		bxBlockCh: make(chan *message, 10000),
+
 		highDeltaHashes: utils.NewHashSet(),
 		trailNewHashes:  utils.NewHashSet(),
 		leadNewHashes:   utils.NewHashSet(),
-		seenHashes:      make(map[string]*hashEntry),
+
+		seenHashes: make(map[string]*hashEntry),
 	}
 }
 
 // Run is an entry point to the TxFeedsCompareMEVLinkService.
 func (s *TxFeedsCompareMEVLinkService) Run(c *cli.Context) error {
-	mevLinkCh = s.mevLinkCh
 	if mgp := c.Float64(flags.MinGasPrice.Name); mgp != 0.0 {
 		s.minGasPrice = &mgp
 	}
@@ -634,24 +628,6 @@ func (s *TxFeedsCompareMEVLinkService) readFeedFromBX(
 	}
 }
 
-func helper(txb []byte, hash mlstreamer.NullableHash, noticed, propagated time.Time) {
-	//Getting the transaction hash and printing the relevant times
-	//var hasher = sha3.NewLegacyKeccak256()
-	//hasher.Write(txb)
-	//var tx_hash = hasher.Sum(nil)
-
-	//hashStr := hex.EncodeToString(tx_hash)
-	timeReceived := time.Now()
-
-	msg := &message{
-		bytes:        txb,
-		err:          nil,
-		timeReceived: timeReceived,
-	}
-	mevLinkCh <- msg
-	//log.Infof("Got tx '" + hashStr + "'! Was noticed on ", noticed, "and sent on", propagated)
-}
-
 func (s *TxFeedsCompareMEVLinkService) readFeedFromMEVLink(
 	ctx context.Context,
 	out chan<- *message,
@@ -662,7 +638,15 @@ func (s *TxFeedsCompareMEVLinkService) readFeedFromMEVLink(
 	log.Info("Initiating connection to mev link")
 
 	str := mlstreamer.NewStreamer(apiKey, apiSecret, mlstreamer.Network(networkNum))
-	str.OnTransaction(helper)
+	str.OnTransaction(func(txb []byte, hash mlstreamer.NullableHash, noticed, propagated time.Time) {
+		timeReceived := time.Now()
+		msg := &message{
+			bytes:        txb,
+			err:          nil,
+			timeReceived: timeReceived,
+		}
+		out <- msg
+	})
 
 	go func() {
 		<-ctx.Done()
