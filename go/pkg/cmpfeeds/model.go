@@ -9,6 +9,7 @@ type message struct {
 	bytes        []byte
 	err          error
 	timeReceived time.Time
+	messageLen   int
 }
 
 type hashEntry struct {
@@ -17,6 +18,7 @@ type hashEntry struct {
 	fiberTimeReceived   time.Time
 	mevLinkTimeReceived time.Time
 	hash                string
+	messageLen          int
 }
 
 type ethTxFeedResponse struct {
