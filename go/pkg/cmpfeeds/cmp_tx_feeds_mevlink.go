@@ -223,7 +223,7 @@ func (s *TxFeedsCompareMEVLinkService) Run(c *cli.Context) error {
 	)
 
 	handleGroup.Add(1)
-	go s.handleUpdates(ctx, &handleGroup)
+	go s.handleUpdates(ctx, &handleGroup, c.Bool(flags.UseGRPCFeed.Name))
 
 	time.Sleep(time.Second * time.Duration(leadTimeSec))
 	for i := 0; i < s.numIntervals; i++ {
@@ -274,6 +274,7 @@ func (s *TxFeedsCompareMEVLinkService) Run(c *cli.Context) error {
 func (s *TxFeedsCompareMEVLinkService) handleUpdates(
 	ctx context.Context,
 	wg *sync.WaitGroup,
+	isGRPC bool,
 ) {
 	defer wg.Done()
 	for {
@@ -293,7 +294,7 @@ func (s *TxFeedsCompareMEVLinkService) handleUpdates(
 				continue
 			}
 
-			if err := s.processFeedFromBX(data); err != nil {
+			if err := s.processFeedFromBX(data, isGRPC); err != nil {
 				log.Errorf("error: %v", err)
 			}
 		case data, ok := <-s.mevLinkCh:
@@ -317,7 +318,7 @@ func (s *TxFeedsCompareMEVLinkService) handleUpdates(
 	}
 }
 
-func (s *TxFeedsCompareMEVLinkService) processFeedFromBX(data *message) error {
+func (s *TxFeedsCompareMEVLinkService) processFeedFromBX(data *message, isGRPCFeed bool) error {
 	if data.err != nil {
 		return fmt.Errorf("failed to read message from feed %q: %v",
 			s.feedName, data.err)
@@ -325,12 +326,18 @@ func (s *TxFeedsCompareMEVLinkService) processFeedFromBX(data *message) error {
 
 	timeReceived := data.timeReceived
 
-	var msg bxTxFeedResponse
-	if err := json.Unmarshal(data.bytes, &msg); err != nil {
-		return fmt.Errorf("failed to unmarshal message: %v", err)
+	var txHash string
+	if isGRPCFeed {
+		txHash = hexutil.Encode(data.bytes)
+	} else {
+		var msg bxTxFeedResponse
+		if err := json.Unmarshal(data.bytes, &msg); err != nil {
+			return fmt.Errorf("failed to unmarshal message: %v", err)
+		}
+
+		txHash = msg.Params.Result.TxHash
 	}
 
-	txHash := msg.Params.Result.TxHash
 	log.Debugf("got message at %s (BXR node, ALL), txHash: %s", timeReceived, txHash)
 
 	if timeReceived.Before(s.timeToBeginComparison) {
