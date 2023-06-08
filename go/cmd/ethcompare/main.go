@@ -100,6 +100,7 @@ func main() {
 					flags.MEVLinkAPIKey,
 					flags.TxFeedName,
 					flags.MEVLinkAPISecret,
+					flags.NetworkNumber,
 					flags.Addresses,
 					flags.ExcludeTxContents,
 					flags.Interval,

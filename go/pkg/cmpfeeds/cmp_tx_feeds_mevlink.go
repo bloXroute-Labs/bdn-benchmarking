@@ -18,12 +18,11 @@ import (
 	"performance/internal/pkg/flags"
 	"performance/internal/pkg/utils"
 	"performance/internal/pkg/ws"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
-
-var mevLinkCh chan *message
 
 // TxFeedsCompareMEVLinkService represents a service which compares transaction feeds time difference
 // between mevlink gateway and BX cloud services.
@@ -33,11 +32,8 @@ type TxFeedsCompareMEVLinkService struct {
 	bxCh      chan *message
 	bxBlockCh chan *message
 
-	hashes chan string
-
 	trailNewHashes        utils.HashSet
 	leadNewHashes         utils.HashSet
-	lowFeeHashes          utils.HashSet
 	highDeltaHashes       utils.HashSet
 	seenHashes            map[string]*hashEntry
 	timeToBeginComparison time.Time
@@ -59,22 +55,21 @@ type TxFeedsCompareMEVLinkService struct {
 func NewTxFeedsCompareMEVLinkService() *TxFeedsCompareMEVLinkService {
 	const bufSize = 8192
 	return &TxFeedsCompareMEVLinkService{
-		handlers:        make(chan handler),
-		bxCh:            make(chan *message),
-		mevLinkCh:       make(chan *message),
-		bxBlockCh:       make(chan *message),
-		hashes:          make(chan string, bufSize),
-		lowFeeHashes:    utils.NewHashSet(),
+		handlers:  make(chan handler),
+		bxCh:      make(chan *message, 10000),
+		mevLinkCh: make(chan *message, 10000),
+		bxBlockCh: make(chan *message, 10000),
+
 		highDeltaHashes: utils.NewHashSet(),
 		trailNewHashes:  utils.NewHashSet(),
 		leadNewHashes:   utils.NewHashSet(),
-		seenHashes:      make(map[string]*hashEntry),
+
+		seenHashes: make(map[string]*hashEntry),
 	}
 }
 
 // Run is an entry point to the TxFeedsCompareMEVLinkService.
 func (s *TxFeedsCompareMEVLinkService) Run(c *cli.Context) error {
-	mevLinkCh = s.mevLinkCh
 	if mgp := c.Float64(flags.MinGasPrice.Name); mgp != 0.0 {
 		s.minGasPrice = &mgp
 	}
@@ -127,7 +122,7 @@ func (s *TxFeedsCompareMEVLinkService) Run(c *cli.Context) error {
 			s.allHashesFile = csv.NewWriter(file)
 
 			if err := s.allHashesFile.Write([]string{
-				"TxHash", "BloXRoute Time", "MEVLink Time", "Time Diff", "Mined In The Block",
+				"TxHash", "BloXRoute Time", "MEVLink Time", "Time Diff", "Bloxroute message len", "Mevlink mesage len",
 			}); err != nil {
 				return fmt.Errorf("cannot write CSV header of file %q: %v", fileName, err)
 			}
@@ -203,6 +198,7 @@ func (s *TxFeedsCompareMEVLinkService) Run(c *cli.Context) error {
 		s.mevLinkCh,
 		c.String(flags.MEVLinkAPIKey.Name),
 		c.String(flags.MEVLinkAPISecret.Name),
+		c.Int(flags.NetworkNumber.Name),
 	)
 
 	go s.readBlockFeedFromBX(
@@ -279,35 +275,30 @@ func (s *TxFeedsCompareMEVLinkService) handleUpdates(
 			if err := update(); err != nil {
 				log.Errorf("error in update function: %v", err)
 			}
-		default:
-			select {
-			case data, ok := <-s.bxCh:
-				if !ok {
-					continue
-				}
+		case data, ok := <-s.bxCh:
+			if !ok {
+				continue
+			}
 
-				if err := s.processFeedFromBX(data); err != nil {
-					log.Errorf("error: %v", err)
-				}
-			case data, ok := <-s.mevLinkCh:
-				if !ok {
-					continue
-				}
+			if err := s.processFeedFromBX(data); err != nil {
+				log.Errorf("error: %v", err)
+			}
+		case data, ok := <-s.mevLinkCh:
+			if !ok {
+				continue
+			}
 
-				if err := s.processFeedFromMEVLink(data); err != nil {
-					log.Errorf("error: %v", err)
-				}
-			case data, ok := <-s.bxBlockCh:
-				if !ok {
-					fmt.Printf("failed to get data from bxblockch %v", data)
-					continue
-				}
+			if err := s.processFeedFromMEVLink(data); err != nil {
+				log.Errorf("error: %v", err)
+			}
+		case data, ok := <-s.bxBlockCh:
+			if !ok {
+				fmt.Printf("failed to get data from bxblockch %v", data)
+				continue
+			}
 
-				if err := s.processBlockFeedFromBX(data); err != nil {
-					fmt.Printf("error: %v", err)
-				}
-			default:
-				break
+			if err := s.processBlockFeedFromBX(data); err != nil {
+				fmt.Printf("error: %v", err)
 			}
 		}
 	}
@@ -319,7 +310,7 @@ func (s *TxFeedsCompareMEVLinkService) processFeedFromBX(data *message) error {
 			s.feedName, data.err)
 	}
 
-	timeReceived := time.Now()
+	timeReceived := data.timeReceived
 
 	var msg bxTxFeedResponse
 	if err := json.Unmarshal(data.bytes, &msg); err != nil {
@@ -337,6 +328,7 @@ func (s *TxFeedsCompareMEVLinkService) processFeedFromBX(data *message) error {
 	if entry, ok := s.seenHashes[txHash]; ok {
 		if entry.bxrTimeReceived.IsZero() {
 			entry.bxrTimeReceived = timeReceived
+			entry.gwMessageLen = data.gwMessageLen
 		}
 	} else if timeReceived.Before(s.timeToEndComparison) &&
 		!s.trailNewHashes.Contains(txHash) &&
@@ -345,6 +337,7 @@ func (s *TxFeedsCompareMEVLinkService) processFeedFromBX(data *message) error {
 		s.seenHashes[txHash] = &hashEntry{
 			hash:            txHash,
 			bxrTimeReceived: timeReceived,
+			gwMessageLen:    data.gwMessageLen,
 		}
 	} else {
 		s.trailNewHashes.Add(txHash)
@@ -367,7 +360,7 @@ func (s *TxFeedsCompareMEVLinkService) processFeedFromMEVLink(data *message) err
 			s.feedName, data.err)
 	}
 
-	timeReceived := time.Now()
+	timeReceived := data.timeReceived
 
 	txStr := hexutil.Encode(data.bytes)
 	txBytes, err := DecodeHex(txStr)
@@ -396,6 +389,7 @@ func (s *TxFeedsCompareMEVLinkService) processFeedFromMEVLink(data *message) err
 	if entry, ok := s.seenHashes[txHash]; ok {
 		if entry.mevLinkTimeReceived.IsZero() {
 			entry.mevLinkTimeReceived = timeReceived
+			entry.mevlinkMessageLen = data.mevlinkMessageLen
 		}
 	} else if timeReceived.Before(s.timeToEndComparison) &&
 		!s.trailNewHashes.Contains(txHash) &&
@@ -404,6 +398,7 @@ func (s *TxFeedsCompareMEVLinkService) processFeedFromMEVLink(data *message) err
 		s.seenHashes[txHash] = &hashEntry{
 			hash:                txHash,
 			mevLinkTimeReceived: timeReceived,
+			mevlinkMessageLen:   data.mevlinkMessageLen,
 		}
 	} else {
 		s.trailNewHashes.Add(txHash)
@@ -496,9 +491,11 @@ func (s *TxFeedsCompareMEVLinkService) stats(ignoreDelta int, verbose bool) stri
 				txHash,
 				gatewayTimeReceived.Format(timestampFormat),
 				mevLinkTimeReceived.Format(timestampFormat),
-				fmt.Sprintf("%d", timeReceivedDiff.Milliseconds()),
-				"1",
+				fmt.Sprintf("%d", timeReceivedDiff.Microseconds()),
+				strconv.Itoa(entry.gwMessageLen),
+				strconv.Itoa(entry.mevlinkMessageLen),
 			}
+
 			if err := s.allHashesFile.Write(record); err != nil {
 				log.Errorf("cannot add txHash %q to all hashes file: %v", txHash, err)
 			}
@@ -626,31 +623,17 @@ func (s *TxFeedsCompareMEVLinkService) readFeedFromBX(
 				bytes:        data,
 				err:          err,
 				timeReceived: timeReceived,
+				gwMessageLen: len(data),
 			}
 		)
 
 		select {
 		case <-ctx.Done():
+			log.Info("Stop gateway feed")
 			return
 		case out <- msg:
 		}
 	}
-}
-
-func helper(txb []byte, hash mlstreamer.NullableHash, noticed, propagated time.Time) {
-	//Getting the transaction hash and printing the relevant times
-	//var hasher = sha3.NewLegacyKeccak256()
-	//hasher.Write(txb)
-	//var tx_hash = hasher.Sum(nil)
-
-	//hashStr := hex.EncodeToString(tx_hash)
-	msg := &message{
-		bytes:        txb,
-		err:          nil,
-		timeReceived: propagated,
-	}
-	mevLinkCh <- msg
-	//log.Infof("Got tx '" + hashStr + "'! Was noticed on ", noticed, "and sent on", propagated)
 }
 
 func (s *TxFeedsCompareMEVLinkService) readFeedFromMEVLink(
@@ -658,13 +641,31 @@ func (s *TxFeedsCompareMEVLinkService) readFeedFromMEVLink(
 	out chan<- *message,
 	apiKey string,
 	apiSecret string,
+	networkNum int,
 ) {
 	log.Info("Initiating connection to mev link")
 
-	str := mlstreamer.NewStreamer(apiKey, apiSecret, 1)
-	str.OnTransaction(helper)
-	log.Fatal(str.Stream())
-	str.Stop()
+	str := mlstreamer.NewStreamer(apiKey, apiSecret, mlstreamer.Network(networkNum))
+	str.OnTransaction(func(txb []byte, hash mlstreamer.NullableHash, noticed, propagated time.Time) {
+		timeReceived := time.Now()
+		msg := &message{
+			bytes:             txb,
+			err:               nil,
+			timeReceived:      timeReceived,
+			mevlinkMessageLen: len(txb),
+		}
+		out <- msg
+	})
+
+	go func() {
+		<-ctx.Done()
+		log.Info("Stop mevlink feed")
+		str.Stop()
+	}()
+
+	if err := str.Stream(); err != nil {
+		log.Error(err)
+	}
 }
 
 func (s *TxFeedsCompareMEVLinkService) clearTrailNewHashes() {
@@ -726,6 +727,7 @@ func (s *TxFeedsCompareMEVLinkService) readBlockFeedFromBX(
 
 		select {
 		case <-ctx.Done():
+			log.Info("Stop blocks feed")
 			return
 		case out <- msg:
 		}

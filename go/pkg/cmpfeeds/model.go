@@ -5,10 +5,12 @@ import "time"
 type handler func() error
 
 type message struct {
-	hash         string
-	bytes        []byte
-	err          error
-	timeReceived time.Time
+	hash              string
+	bytes             []byte
+	err               error
+	timeReceived      time.Time
+	gwMessageLen      int
+	mevlinkMessageLen int
 }
 
 type hashEntry struct {
@@ -17,6 +19,8 @@ type hashEntry struct {
 	fiberTimeReceived   time.Time
 	mevLinkTimeReceived time.Time
 	hash                string
+	gwMessageLen        int
+	mevlinkMessageLen   int
 }
 
 type ethTxFeedResponse struct {
