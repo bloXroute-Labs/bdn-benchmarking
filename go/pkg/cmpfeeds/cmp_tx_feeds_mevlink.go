@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	pb "github.com/bloXroute-Labs/bxgateway-private-go/bxgateway/v2/protobuf"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -16,11 +15,13 @@ import (
 	"github.com/urfave/cli/v2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/proto"
 	"math"
 	"os"
 	"performance/internal/pkg/flags"
 	"performance/internal/pkg/utils"
 	"performance/internal/pkg/ws"
+	pb "performance/pkg/cmpfeeds/protobuf"
 	"strconv"
 	"strings"
 	"sync"
@@ -680,9 +681,9 @@ func (s *TxFeedsCompareMEVLinkService) readFeedFromGRPCBX(ctx context.Context, w
 			for _, tx := range data.Tx {
 				var (
 					msg = &message{
-						bytes:             tx.Hash,
-						timeReceived:      timeReceived,
-						mevlinkMessageLen: len(tx.Hash),
+						bytes:        tx.Hash,
+						timeReceived: timeReceived,
+						gwMessageLen: proto.Size(tx),
 					}
 				)
 

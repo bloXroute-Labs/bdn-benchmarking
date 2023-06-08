@@ -505,7 +505,7 @@ func (s *TxFeedsCompareFiberGrpcService) readFeedFromBX(
 	defer cancel()
 
 	log.Infof("Connection to %s established", uri)
-	stream, err := client.NewTxs(callContext, &pb.NewTxsRequest{Filters: ""})
+	stream, err := client.NewTxs(callContext, &pb.TxsRequest{Filters: ""})
 	if err != nil {
 		log.Errorf("could not create newTxs %v", err)
 	}
@@ -518,7 +518,7 @@ func (s *TxFeedsCompareFiberGrpcService) readFeedFromBX(
 		if data != nil {
 			var (
 				msg = &message{
-					hash:         data.Tx[0].Hash,
+					hash:         "mock",
 					timeReceived: timeReceived,
 				}
 			)
