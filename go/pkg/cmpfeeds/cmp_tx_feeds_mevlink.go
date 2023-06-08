@@ -7,12 +7,15 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	pb "github.com/bloXroute-Labs/bxgateway-private-go/bxgateway/v2/protobuf"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
 	mlstreamer "github.com/mevlink/streamer-go"
 	log "github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"math"
 	"os"
 	"performance/internal/pkg/flags"
@@ -169,7 +172,9 @@ func (s *TxFeedsCompareMEVLinkService) Run(c *cli.Context) error {
 	s.feedName = c.String(flags.TxFeedName.Name)
 
 	readerGroup.Add(2)
-	if c.Bool(flags.UseCloudAPI.Name) {
+
+	switch {
+	case c.Bool(flags.UseCloudAPI.Name):
 		go s.readFeedFromBX(
 			ctx,
 			&readerGroup,
@@ -180,7 +185,14 @@ func (s *TxFeedsCompareMEVLinkService) Run(c *cli.Context) error {
 			c.Bool(flags.ExcludeFromBlockchain.Name),
 			false,
 		)
-	} else {
+	case c.Bool(flags.UseGRPCFeed.Name):
+		go s.readFeedFromGRPCBX(
+			ctx,
+			&readerGroup,
+			s.bxCh,
+			c.String(flags.Gateway.Name),
+		)
+	default:
 		go s.readFeedFromBX(
 			ctx,
 			&readerGroup,
@@ -632,6 +644,55 @@ func (s *TxFeedsCompareMEVLinkService) readFeedFromBX(
 			log.Info("Stop gateway feed")
 			return
 		case out <- msg:
+		}
+	}
+}
+
+func (s *TxFeedsCompareMEVLinkService) readFeedFromGRPCBX(ctx context.Context, wg *sync.WaitGroup, out chan<- *message, uri string) {
+	defer wg.Done()
+
+	log.Infof("Initiating connection to GRPC %v", uri)
+
+	conn, err := grpc.Dial(uri, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		log.Fatalf("failed to connect: %v", err)
+	}
+	client := pb.NewGatewayClient(conn)
+	callContext, cancel := context.WithTimeout(context.Background(), 24*time.Hour)
+	defer cancel()
+
+	log.Infof("Connection to %s established", uri)
+
+	stream, err := client.NewTxs(callContext, &pb.TxsRequest{Filters: ""})
+	if err != nil {
+		log.Errorf("could not create newTxs %v", err)
+	}
+
+	for {
+		data, err := stream.Recv()
+
+		timeReceived := time.Now()
+		if err != nil {
+			log.Errorf("error in recieve: %v", err)
+		}
+		if data != nil {
+
+			for _, tx := range data.Tx {
+				var (
+					msg = &message{
+						bytes:             tx.Hash,
+						timeReceived:      timeReceived,
+						mevlinkMessageLen: len(tx.Hash),
+					}
+				)
+
+				select {
+				case <-ctx.Done():
+					return
+				case out <- msg:
+				}
+			}
+
 		}
 	}
 }

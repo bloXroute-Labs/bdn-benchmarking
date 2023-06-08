@@ -115,6 +115,11 @@ var (
 		Usage: "use GO Gateway",
 		Value: false,
 	}
+	UseGRPCFeed = &cli.BoolFlag{
+		Name:  "use-grpc-feed",
+		Usage: "use grpc feed",
+		Value: false,
+	}
 	NodeWSEndpoint = &cli.StringFlag{
 		Name:     "node-ws-endpoint",
 		Usage:    "Ethereum node ws endpoint. Sample Input: ws://127.0.0.1:8546",
