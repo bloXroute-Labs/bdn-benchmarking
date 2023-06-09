@@ -9,6 +9,11 @@ var (
 		Usage: "gateway websocket connection string",
 		Value: "ws://127.0.0.1:28333/ws",
 	}
+	GRPCURI = &cli.StringFlag{
+		Name:  "grpc-uri",
+		Usage: "grpc fede uri",
+		Value: "127.0.0.1:5002",
+	}
 	Eth = &cli.StringFlag{
 		Name:  "eth",
 		Usage: "ethereum node websocket connection string",

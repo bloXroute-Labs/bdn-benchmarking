@@ -117,6 +117,7 @@ func main() {
 					flags.AuthHeader,
 					flags.UseGoGateway,
 					flags.UseGRPCFeed,
+					flags.GRPCURI,
 				},
 				Action: cmpfeeds.NewTxFeedsCompareMEVLinkService().Run,
 			},

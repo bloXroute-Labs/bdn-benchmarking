@@ -191,7 +191,7 @@ func (s *TxFeedsCompareMEVLinkService) Run(c *cli.Context) error {
 			ctx,
 			&readerGroup,
 			s.bxCh,
-			c.String(flags.Gateway.Name),
+			c.String(flags.GRPCURI.Name),
 		)
 	default:
 		go s.readFeedFromBX(
