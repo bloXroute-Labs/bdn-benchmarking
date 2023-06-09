@@ -157,6 +157,28 @@ func main() {
 				},
 				Action: cmptxspeed.NewTxSpeedCompareService().Run,
 			},
+			{
+				Name:  "ws-vs-grpc",
+				Usage: "compare WS vs GRPC feeds",
+				Flags: []cli.Flag{
+					flags.Gateway,
+					flags.TxFeedName,
+					flags.Addresses,
+					flags.ExcludeTxContents,
+					flags.Interval,
+					flags.NumIntervals,
+					flags.LeadTime,
+					flags.TxTrailTime,
+					flags.Dump,
+					flags.ExcludeDuplicates,
+					flags.TxIgnoreDelta,
+					flags.UseCloudAPI,
+					flags.ExcludeFromBlockchain,
+					flags.AuthHeader,
+					flags.GRPCURI,
+				},
+				Action: cmpfeeds.NewTxFeedsCompareWsVsGRPC().Run,
+			},
 		},
 	}
 
