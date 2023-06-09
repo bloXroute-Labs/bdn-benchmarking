@@ -280,7 +280,7 @@ func (s *TxFeedsCompareWsVsGRPC) handleUpdates(
 				continue
 			}
 
-			if err := s.processFeedFromWS(data); err != nil {
+			if err := s.processFeedFromGRPC(data); err != nil {
 				log.Errorf("error: %v", err)
 			}
 		case data, ok := <-s.bxBlockCh:
