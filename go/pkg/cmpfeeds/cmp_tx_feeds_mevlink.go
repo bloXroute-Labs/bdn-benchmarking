@@ -439,6 +439,8 @@ func (s *TxFeedsCompareMEVLinkService) stats(ignoreDelta int, verbose bool) stri
 		newTxFromMEVLinkFeedFirst          = 0
 		totalTxFromGateway                 = 0
 		totalTxFromMEVLink                 = 0
+		totalBytesFromGateway              = 0
+		totalBytesFromMevlink              = 0
 	)
 
 	for txHash, entry := range s.seenHashes {
@@ -458,6 +460,9 @@ func (s *TxFeedsCompareMEVLinkService) stats(ignoreDelta int, verbose bool) stri
 			}
 			continue
 		}
+
+		totalBytesFromGateway += entry.gwMessageLen
+		totalBytesFromMevlink += entry.mevlinkMessageLen
 
 		if entry.bxrTimeReceived.IsZero() {
 			mevLinkTimeReceived := entry.mevLinkTimeReceived
@@ -565,7 +570,9 @@ func (s *TxFeedsCompareMEVLinkService) stats(ignoreDelta int, verbose bool) stri
 			"Gateway is faster then MEVLink by (ms): %.6f\n"+
 			"\nTotal Transactions summary:\n"+
 			"Total tx from bloXroute gateway: %d\n"+
-			"Total tx from MEVLink: %d\n",
+			"Total tx from MEVLink: %d\n"+
+			"Total bytes from Gateway: %d\n"+
+			"Total bytes from Mevlink: %d\n",
 
 		int(newTxSeenByBothFeeds),
 		int(txSeenByBothFeedsGatewayFirst),
@@ -576,6 +583,8 @@ func (s *TxFeedsCompareMEVLinkService) stats(ignoreDelta int, verbose bool) stri
 		timeAverage*1000,
 		totalTxFromGateway,
 		totalTxFromMEVLink,
+		totalBytesFromGateway,
+		totalBytesFromMevlink,
 	)
 
 	verboseResults := fmt.Sprintf(
