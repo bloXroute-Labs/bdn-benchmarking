@@ -12,6 +12,7 @@ import (
 	"performance/internal/pkg/flags"
 	"performance/internal/pkg/utils"
 	"performance/internal/pkg/ws"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -50,25 +51,28 @@ type txTrace struct {
 // TxFilterService represents a service which filters txs coming from a BX gateway
 // based on specified addresses as recipients
 type TxFilterService struct {
-	handlers              chan handler
-	bxCh                  chan *message
-	excBkContents         bool
-	feedName              string
-	filteredTxs           map[string]*txFiletInfo
-	allHashesFile         *csv.Writer
-	timeToBeginComparison time.Time
-	timeToEndComparison   time.Time
-	trailNewHashes        utils.HashSet
-	mu                    sync.Mutex
+	handlers               chan handler
+	bxCh                   chan *message
+	excBkContents          bool
+	feedName               string
+	filteredTxs            map[string]map[string]*txFiletInfo // filteredTxs[blockNum][txIdx] -> txFiletInfo
+	filteredBlockNums      []int                              // keep the block numbers so that we can log the blocks sorted
+	filteredTxIdxsPerBlock map[string][]int                   // keep the tx indexes per block so that we can log tx sorted
+	allHashesFile          *csv.Writer
+	timeToBeginComparison  time.Time
+	timeToEndComparison    time.Time
+	trailNewHashes         utils.HashSet
+	mu                     sync.Mutex
 }
 
 // NewTxFilterService creates and initializes TxFilterService instance.
 func NewTxFilterService() *TxFilterService {
 	return &TxFilterService{
-		handlers:       make(chan handler),
-		bxCh:           make(chan *message),
-		filteredTxs:    make(map[string]*txFiletInfo),
-		trailNewHashes: utils.NewHashSet(),
+		handlers:               make(chan handler),
+		bxCh:                   make(chan *message),
+		filteredTxs:            make(map[string]map[string]*txFiletInfo),
+		filteredTxIdxsPerBlock: make(map[string][]int),
+		trailNewHashes:         utils.NewHashSet(),
 	}
 }
 
@@ -139,63 +143,83 @@ func (s *TxFilterService) Run(c *cli.Context) error {
 
 	txCount := 1
 	s.handlers <- func() error {
-		for txHash, entry := range s.filteredTxs {
-			if s.allHashesFile != nil {
-				txTraceBytes, err := json.Marshal(entry.txTrace)
-				if err != nil {
-					log.Errorf("failed to marshal txtrace to string %v", entry.txTrace)
+		// sort processed block nums and get each entry from map
+		sort.Ints(s.filteredBlockNums)
+		for _, blockNum := range s.filteredBlockNums {
+			blockNumStr := strconv.FormatInt(int64(blockNum), 10)
+			txsEntry, ok := s.filteredTxs[blockNumStr]
+			if !ok {
+				log.Errorf("failed failed to read txs from map, block number: %v", blockNum)
+				continue
+			}
+
+			// sort tx indexes for each block and get each entry from the nested map
+			sort.Ints(s.filteredTxIdxsPerBlock[blockNumStr])
+			for _, txIdx := range s.filteredTxIdxsPerBlock[blockNumStr] {
+				txIdxStr := strconv.FormatInt(int64(txIdx), 10)
+				txEntry, ok := txsEntry[txIdxStr]
+				if !ok {
+					log.Errorf("failed failed to read tx from map, block number: %v,  tx index: %v", blockNum, txIdx)
 					continue
 				}
 
-				bigIntGasPrice := new(big.Int)
-				_, successGasPriceToBigIng := bigIntGasPrice.SetString(entry.tx.GasPrice, 0)
-				if !successGasPriceToBigIng {
-					log.Errorf("failed to convert gasPrice: %s from hex to bigIng", entry.tx.GasPrice)
-					continue
-				}
+				if s.allHashesFile != nil {
+					txTraceBytes, err := json.Marshal(txEntry.txTrace)
+					if err != nil {
+						log.Errorf("failed to marshal txtrace to string %v", txEntry.txTrace)
+						continue
+					}
 
-				bigIntValue := new(big.Int)
-				_, successValueToBigIng := bigIntValue.SetString(entry.tx.Value, 0)
-				if !successValueToBigIng {
-					log.Errorf("failed to convert gasPrice: %s from hex to bigIng", entry.tx.Value)
-					continue
-				}
+					bigIntGasPrice := new(big.Int)
+					_, successGasPriceToBigIng := bigIntGasPrice.SetString(txEntry.tx.GasPrice, 0)
+					if !successGasPriceToBigIng {
+						log.Errorf("failed to convert gasPrice: %s from hex to bigIng", txEntry.tx.GasPrice)
+						continue
+					}
 
-				uintNonceValue, err := strconv.ParseUint(entry.tx.Nonce, 0, 64)
-				if err != nil {
-					log.Errorf("failed to convert nonce: %s from hex to uint64", entry.tx.Nonce)
-					continue
-				}
+					bigIntValue := new(big.Int)
+					_, successValueToBigIng := bigIntValue.SetString(txEntry.tx.Value, 0)
+					if !successValueToBigIng {
+						log.Errorf("failed to convert gasPrice: %s from hex to bigIng", txEntry.tx.Value)
+						continue
+					}
 
-				uintGasValue, err := strconv.ParseUint(entry.tx.Gas, 0, 64)
-				if err != nil {
-					log.Errorf("failed to convert gas: %s from hex to uint64", entry.tx.Gas)
-					continue
-				}
+					uintNonceValue, err := strconv.ParseUint(txEntry.tx.Nonce, 0, 64)
+					if err != nil {
+						log.Errorf("failed to convert nonce: %s from hex to uint64", txEntry.tx.Nonce)
+						continue
+					}
 
-				record := []string{
-					strconv.Itoa(txCount),
-					strconv.FormatInt(entry.blockNum, 10),
-					txHash,
-					entry.additionalFields.Index,
-					entry.additionalFields.Type,
-					entry.tx.From,
-					entry.tx.To,
-					strconv.FormatUint(uintGasValue, 10),
-					bigIntGasPrice.String(),
-					entry.additionalFields.GasUsed,
-					entry.additionalFields.CumulativeGasUsed,
-					entry.tx.Input,
-					strconv.FormatUint(uintNonceValue, 10),
-					bigIntValue.String(),
-					string(txTraceBytes),
-					strconv.FormatBool(entry.isPrivate),
-				}
+					uintGasValue, err := strconv.ParseUint(txEntry.tx.Gas, 0, 64)
+					if err != nil {
+						log.Errorf("failed to convert gas: %s from hex to uint64", txEntry.tx.Gas)
+						continue
+					}
 
-				if err := s.allHashesFile.Write(record); err != nil {
-					log.Errorf("cannot add txHash %q to file: %v", txHash, err)
+					record := []string{
+						strconv.Itoa(txCount),
+						strconv.FormatInt(txEntry.blockNum, 10),
+						txEntry.tx.Hash,
+						txEntry.additionalFields.Index,
+						txEntry.additionalFields.Type,
+						txEntry.tx.From,
+						txEntry.tx.To,
+						strconv.FormatUint(uintGasValue, 10),
+						bigIntGasPrice.String(),
+						txEntry.additionalFields.GasUsed,
+						txEntry.additionalFields.CumulativeGasUsed,
+						txEntry.tx.Input,
+						strconv.FormatUint(uintNonceValue, 10),
+						bigIntValue.String(),
+						string(txTraceBytes),
+						strconv.FormatBool(txEntry.isPrivate),
+					}
+
+					if err := s.allHashesFile.Write(record); err != nil {
+						log.Errorf("cannot add txHash %q to file: %v", txEntry.tx.Hash, err)
+					}
+					txCount++
 				}
-				txCount++
 			}
 		}
 		s.timeToEndComparison = time.Now().Add(time.Second * time.Duration(intervalSec))
@@ -305,26 +329,48 @@ func (s *TxFilterService) updateTxFilterInfo(tx bxBkTx, blockNum int64, timeRece
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if _, ok := s.filteredTxs[tx.Hash]; !ok {
-		txTraceInfo, err := getTxTraceInfo(tx.Hash, authHeader)
-		var isPrivateTx bool
-		if txTraceInfo.Txtrace == nil {
-			if err != nil {
-				return
-			}
-			// if transaction was not found in txtrace it is private
-			isPrivateTx = true
+	blockNumStr := strconv.FormatInt(blockNum, 10)
+
+	filteredTxsEntry, blockFound := s.filteredTxs[blockNumStr]
+	if blockFound {
+		if _, txIdxFound := filteredTxsEntry[additionalFields.Index]; txIdxFound {
+			// duplicate entry
+			return
 		}
-		s.filteredTxs[tx.Hash] = &txFiletInfo{
-			blockNum:         blockNum,
-			tx:               tx,
-			additionalFields: additionalFields,
-			txTrace:          *txTraceInfo,
-			isPrivate:        isPrivateTx,
-			timestamp:        timeReceived,
-		}
-		log.Infof("filteredTxs in %v is %v", tx.Hash, s.filteredTxs[tx.Hash])
+	} else {
+		s.filteredBlockNums = append(s.filteredBlockNums, int(blockNum))
+		s.filteredTxs[blockNumStr] = make(map[string]*txFiletInfo)
 	}
+
+	txIdx, err := strconv.ParseInt(additionalFields.Index, 10, 0)
+	if err != nil {
+		return
+	}
+
+	txTraceInfo, err := getTxTraceInfo(tx.Hash, authHeader)
+
+	var isPrivateTx bool
+	if txTraceInfo.Txtrace == nil {
+		if err != nil {
+			return
+		}
+		// if transaction was not found in txtrace it is private
+		isPrivateTx = true
+	}
+
+	txFilet := &txFiletInfo{
+		blockNum:         blockNum,
+		tx:               tx,
+		additionalFields: additionalFields,
+		txTrace:          *txTraceInfo,
+		isPrivate:        isPrivateTx,
+		timestamp:        timeReceived,
+	}
+
+	s.filteredTxs[blockNumStr][additionalFields.Index] = txFilet
+	s.filteredTxIdxsPerBlock[blockNumStr] = append(s.filteredTxIdxsPerBlock[blockNumStr], int(txIdx))
+
+	log.Infof("Processed tx: BlockNum: %v, TxIdx %v, TxHash: %v, TxType: %v", blockNum, txIdx, tx.Hash, additionalFields.Type)
 }
 
 func (s *TxFilterService) handleTx(tx bxBkTx, blockNum int64, timeReceived time.Time, authHeader string) {
@@ -411,16 +457,4 @@ func (s *TxFilterService) readFeedFromBX(
 		case out <- msg:
 		}
 	}
-}
-
-func (s *TxFilterService) clearTrailNewHashes() {
-	done := make(chan struct{})
-	go func() {
-		s.handlers <- func() error {
-			s.trailNewHashes = utils.NewHashSet()
-			done <- struct{}{}
-			return nil
-		}
-	}()
-	<-done
 }
