@@ -6,12 +6,6 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
-	"github.com/ethereum/go-ethereum/common/hexutil"
-	log "github.com/sirupsen/logrus"
-	"github.com/urfave/cli/v2"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/protobuf/proto"
 	"math"
 	"os"
 	"performance/internal/pkg/flags"
@@ -22,6 +16,13 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	log "github.com/sirupsen/logrus"
+	"github.com/urfave/cli/v2"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/proto"
 )
 
 type wsVsGRPCHashes struct {
@@ -601,7 +602,9 @@ func (s *TxFeedsCompareWsVsGRPC) readFeedFromGRPCBX(ctx context.Context, wg *syn
 
 	log.Infof("Initiating connection to GRPC %v", uri)
 
-	conn, err := grpc.Dial(uri, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.Dial(uri,
+		grpc.WithWriteBufferSize(0),
+		grpc.WithInitialConnWindowSize(128), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Fatalf("failed to connect: %v", err)
 	}
