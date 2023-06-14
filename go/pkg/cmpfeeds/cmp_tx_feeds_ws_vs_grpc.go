@@ -604,7 +604,7 @@ func (s *TxFeedsCompareWsVsGRPC) readFeedFromGRPCBX(ctx context.Context, wg *syn
 
 	conn, err := grpc.Dial(uri,
 		grpc.WithWriteBufferSize(0),
-		grpc.WithInitialConnWindowSize(128), grpc.WithTransportCredentials(insecure.NewCredentials()))
+		grpc.WithInitialConnWindowSize(128*1024), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Fatalf("failed to connect: %v", err)
 	}
