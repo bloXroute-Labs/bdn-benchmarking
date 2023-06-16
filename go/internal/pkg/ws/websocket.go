@@ -4,10 +4,11 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"github.com/gorilla/websocket"
 	"io/ioutil"
 	"net/http"
 	"strings"
+
+	"github.com/gorilla/websocket"
 )
 
 // Request represents data which is needed to send RPC requests to ETH node or BX gateway.
@@ -236,7 +237,7 @@ func newSubBkFeedRequestBX(id int, feedName string, excBkContents bool) *Request
 	options := make(map[string]interface{})
 
 	if excBkContents {
-		options["include"] = []string{"hash", "header"}
+		options["include"] = []string{"hash", "header", "transactions"}
 	} else {
 		options["include"] = []string{"hash", "header", "transactions", "uncles", "future_validator_info"}
 	}

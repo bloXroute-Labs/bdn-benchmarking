@@ -25,7 +25,6 @@ import (
 )
 
 const providerURL = ""
-const fileName = "filteredTxs.csv"
 
 var addrFilterMap = map[string]bool{
 	"0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640": true,
@@ -51,6 +50,7 @@ type txTrace struct {
 // TxFilterService represents a service which filters txs coming from a BX gateway
 // based on specified addresses as recipients
 type TxFilterService struct {
+	id                     int
 	handlers               chan handler
 	bxCh                   chan *message
 	excBkContents          bool
@@ -77,7 +77,10 @@ func NewTxFilterService() *TxFilterService {
 }
 
 // Run is an entry point to the BkFeedsCompareService.
-func (s *TxFilterService) Run(c *cli.Context) error {
+func (s *TxFilterService) Run(c *cli.Context, id int) error {
+	s.id = id
+	log.Infof("running interval with id: %v", id)
+	fileName := fmt.Sprintf("uniswapAnalysis-%s", strconv.FormatInt(time.Now().UTC().Unix(), 10))
 	file, err := os.Create(fileName)
 	if err != nil {
 		errMsg := fmt.Errorf("cannot open file %q: %v", fileName, err)
@@ -105,7 +108,7 @@ func (s *TxFilterService) Run(c *cli.Context) error {
 		return fmt.Errorf("cannot write CSV header of file %q: %v", fileName, err)
 	}
 
-	s.excBkContents = c.Bool(flags.ExcludeBkContents.Name)
+	s.excBkContents = flags.ExcludeBkContents.Value
 
 	var (
 		intervalSec  = c.Int(flags.Interval.Name)
@@ -228,7 +231,6 @@ func (s *TxFilterService) Run(c *cli.Context) error {
 	cancel()
 	readerGroup.Wait()
 	handleGroup.Wait()
-
 	return nil
 }
 

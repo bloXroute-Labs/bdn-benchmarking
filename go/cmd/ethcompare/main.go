@@ -1,12 +1,15 @@
 package main
 
 import (
-	"github.com/urfave/cli/v2"
 	"log"
 	"os"
 	"performance/internal/pkg/flags"
 	"performance/pkg/cmpfeeds"
 	"performance/pkg/cmptxspeed"
+	"sync"
+	"time"
+
+	"github.com/urfave/cli/v2"
 )
 
 func main() {
@@ -69,12 +72,35 @@ func main() {
 					flags.ExcludeBkContents,
 					flags.Dump,
 					flags.UseCloudAPI,
+					flags.NumIntervals,
 					flags.AuthHeader,
 					flags.CloudAPIWSURI,
 					flags.Interval,
 					flags.TrailTime,
 				},
-				Action: cmpfeeds.NewTxFilterService().Run,
+				Action: func(context *cli.Context) error {
+					var intervalGroup sync.WaitGroup
+					intervalGroup.Add(context.Int("num-intervals"))
+					for i := 0; i < context.Int("num-intervals"); i++ {
+						// This is a workaround so that two consequent intervals will use different filters
+						// And we need that in order to avoid "duplicate feed request" to the gateway
+						if i%2 == 0 {
+							flags.ExcludeBkContents.Value = true
+						} else {
+							flags.ExcludeBkContents.Value = false
+						}
+						go func(i int, wg *sync.WaitGroup) {
+							defer wg.Done()
+							err := cmpfeeds.NewTxFilterService().Run(context, i+1)
+							if err != nil {
+								log.Fatalf("Error while running interval %v", i)
+							}
+						}(i, &intervalGroup)
+						time.Sleep(time.Second * time.Duration(context.Int("interval")))
+					}
+					intervalGroup.Wait()
+					return nil
+				},
 			},
 			{
 				Name: "txspeed",
