@@ -1,14 +1,15 @@
 package main
 
 import (
-	"log"
 	"os"
 	"performance/internal/pkg/flags"
+	"performance/internal/pkg/logger"
 	"performance/pkg/cmpfeeds"
 	"performance/pkg/cmptxspeed"
 	"sync"
 	"time"
 
+	log "github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 )
 
@@ -80,8 +81,20 @@ func main() {
 				},
 				Action: func(context *cli.Context) error {
 					var intervalGroup sync.WaitGroup
-					intervalGroup.Add(context.Int("num-intervals"))
-					for i := 0; i < context.Int("num-intervals"); i++ {
+					numIntervals := context.Int(flags.NumIntervals.Name)
+					intervalGroup.Add(numIntervals)
+					for i := 0; i < numIntervals; i++ {
+						// create logger
+						logrus := logger.NewLogger()
+
+						logrus.Infof("running interval %v", i+1)
+						// Get the time until the next midnight
+						now := time.Now()
+						nextMidnight := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 1, 0, time.UTC)
+						secondsUntilMidnight := int(nextMidnight.Sub(now).Seconds())
+						flags.Interval.Value = secondsUntilMidnight
+						logrus.Infof("This interval will run for %v seconds", secondsUntilMidnight)
+
 						// This is a workaround so that two consequent intervals will use different filters
 						// And we need that in order to avoid "duplicate feed request" to the gateway
 						if i%2 == 0 {
@@ -91,12 +104,12 @@ func main() {
 						}
 						go func(i int, wg *sync.WaitGroup) {
 							defer wg.Done()
-							err := cmpfeeds.NewTxFilterService().Run(context, i+1)
+							err := cmpfeeds.NewTxFilterService().Run(context, i+1, logrus)
 							if err != nil {
-								log.Fatalf("Error while running interval %v", i)
+								logrus.Fatalf("Error while running interval %v", i)
 							}
 						}(i, &intervalGroup)
-						time.Sleep(time.Second * time.Duration(context.Int("interval")))
+						time.Sleep(time.Second * time.Duration(flags.Interval.Value))
 					}
 					intervalGroup.Wait()
 					return nil

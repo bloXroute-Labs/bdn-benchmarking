@@ -50,7 +50,7 @@ var (
 	Interval = &cli.IntFlag{
 		Name:  "interval",
 		Usage: "length of feed sample interval in seconds",
-		Value: 1800,
+		Value: 120,
 	}
 	NumIntervals = &cli.IntFlag{
 		Name:  "num-intervals",

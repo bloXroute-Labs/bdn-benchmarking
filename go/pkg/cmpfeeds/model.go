@@ -121,5 +121,6 @@ type txFiletInfo struct {
 	additionalFields txAdditionalFields
 	txTrace          txTrace
 	isPrivate        bool
+	privateTxTime    string
 	timestamp        time.Time
 }

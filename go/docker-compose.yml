@@ -1,0 +1,11 @@
+version: '3'
+services:
+  uniswap-analysis:
+    image: uniswapv2:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    volumes:
+      - ./logs:/app/logs
+      - ./csv:/app/csv
