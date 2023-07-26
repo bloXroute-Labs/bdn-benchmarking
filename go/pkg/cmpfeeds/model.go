@@ -116,7 +116,6 @@ type ethBkContentsResponse struct {
 }
 
 type txFiletInfo struct {
-	blockNum         int64
 	tx               bxBkTx
 	additionalFields txAdditionalFields
 	txTrace          txTrace

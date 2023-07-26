@@ -36,6 +36,7 @@ import (
 )
 
 const providerURL = ""
+const providerURL2 = ""
 const mysqlDsn = ""
 const csvDir = "csv"
 const googleCredentialsFile = "googleClient.json"
@@ -281,7 +282,7 @@ func (s *TxFilterService) writeToFile() error {
 
 				record := []string{
 					strconv.Itoa(txCount),
-					strconv.FormatInt(txEntry.blockNum, 10),
+					blockNumStr,
 					txEntry.tx.Hash,
 					txEntry.additionalFields.Index,
 					txEntry.additionalFields.Type,
@@ -369,7 +370,72 @@ func (s *TxFilterService) processFeedFromBX(data *message, authHeader string) er
 	return nil
 }
 
+func getBxTimestamp(db *sql.DB, txHash string) (string, error) {
+	query := "SELECT CAST(timestamp AS DATETIME) AS timestamp FROM private_transactions where tx_hash = ? UNION SELECT CAST(timestamp AS DATETIME) AS timestamp FROM mev_bundle_transactions WHERE tx_hash = ?"
+	var timestamp string
+	trimmedHash := strings.TrimPrefix(txHash, "0x")
+	err := db.QueryRow(query, trimmedHash, trimmedHash).Scan(&timestamp)
+	if err != nil {
+		return "", fmt.Errorf("error executing query: %v", err)
+	}
+	return timestamp, nil
+}
+
+func getTxReceipt(txHash string) (*types.Receipt, error) {
+	// sleep in order to be sure that the tx is confirmed, and we can get the receipt
+	time.Sleep(5 * time.Second)
+
+	client, err := ethclient.Dial(providerURL)
+	if err != nil {
+		return nil, err
+	}
+
+	// connect to second client for redundancy
+	client2, err := ethclient.Dial(providerURL2)
+	if err != nil {
+		return nil, err
+	}
+
+	maxRetries := 60
+	var receipt *types.Receipt
+	var retryCount int
+	for retryCount < maxRetries {
+		receipt, err = client.TransactionReceipt(context.Background(), common.HexToHash(txHash))
+		if err == nil {
+			return receipt, nil
+		}
+
+		receipt, err = client2.TransactionReceipt(context.Background(), common.HexToHash(txHash))
+		if err == nil {
+			return receipt, nil
+		}
+
+		time.Sleep(5 * time.Second)
+		retryCount++
+	}
+
+	return nil, err
+}
+
 func getTxTraceInfo(txHash string, authHeader string) (*txTrace, error) {
+	maxRetries := 5
+	var txTraceResp *txTrace
+	var retryCount int
+	var err error
+	for retryCount < maxRetries {
+		txTraceResp, err = txTraceRequest(txHash, authHeader)
+		if err == nil {
+			return txTraceResp, nil
+		}
+
+		time.Sleep(5 * time.Second)
+		retryCount++
+	}
+
+	return nil, err
+}
+
+func txTraceRequest(txHash string, authHeader string) (*txTrace, error) {
 	client := &http.Client{}
 	txTraceObj := &txTrace{}
 
@@ -398,42 +464,6 @@ func getTxTraceInfo(txHash string, authHeader string) (*txTrace, error) {
 	}
 
 	return txTraceObj, nil
-}
-
-func getBxTimestamp(db *sql.DB, txHash string) (string, error) {
-	query := "SELECT CAST(timestamp AS DATETIME) AS timestamp FROM private_transactions where tx_hash = ? UNION SELECT CAST(timestamp AS DATETIME) AS timestamp FROM mev_bundle_transactions WHERE tx_hash = ?"
-	var timestamp string
-	trimmedHash := strings.TrimPrefix(txHash, "0x")
-	err := db.QueryRow(query, trimmedHash, trimmedHash).Scan(&timestamp)
-	if err != nil {
-		return "", fmt.Errorf("error executing query: %v", err)
-	}
-	return timestamp, nil
-}
-
-func getTxReceipt(txHash string) (*types.Receipt, error) {
-	// sleep in order to be sure that the tx is confirmed, and we can get the receipt
-	time.Sleep(5 * time.Second)
-
-	client, err := ethclient.Dial(providerURL)
-	if err != nil {
-		return nil, err
-	}
-
-	maxRetries := 3
-	var receipt *types.Receipt
-	var retryCount int
-	for retryCount < maxRetries {
-		receipt, err = client.TransactionReceipt(context.Background(), common.HexToHash(txHash))
-		if err == nil {
-			return receipt, nil
-		}
-
-		time.Sleep(5 * time.Second)
-		retryCount++
-	}
-
-	return nil, err
 }
 
 func (s *TxFilterService) updateTxFilterInfo(tx bxBkTx, blockNum int64, timeReceived time.Time, authHeader string, additionalFields txAdditionalFields) {
@@ -470,7 +500,6 @@ func (s *TxFilterService) updateTxFilterInfo(tx bxBkTx, blockNum int64, timeRece
 	}
 
 	txFilet := &txFiletInfo{
-		blockNum:         blockNum,
 		tx:               tx,
 		additionalFields: additionalFields,
 		txTrace:          *txTraceInfo,
