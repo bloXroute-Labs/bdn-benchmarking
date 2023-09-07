@@ -4,10 +4,11 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"github.com/gorilla/websocket"
 	"io/ioutil"
 	"net/http"
 	"strings"
+
+	"github.com/gorilla/websocket"
 )
 
 // Request represents data which is needed to send RPC requests to ETH node or BX gateway.
@@ -35,23 +36,8 @@ func (c *Connection) SubscribeTxFeedEth(id int) (*Subscription, error) {
 }
 
 // SubscribeTxFeedBX subscribes to BX gateway feed.
-func (c *Connection) SubscribeTxFeedBX(
-	id int,
-	feedName string,
-	excTxContents bool,
-	duplicates bool,
-	includeFromBlockchain bool,
-	useLightGateway bool,
-) (*Subscription, error) {
-	return c.subscribe(
-		newSubTxFeedRequestBX(
-			id,
-			feedName,
-			excTxContents,
-			duplicates,
-			includeFromBlockchain,
-			useLightGateway),
-		bx)
+func (c *Connection) SubscribeTxFeedBX(id int, feedName string) (*Subscription, error) {
+	return c.subscribe(newSubTxFeedRequestBX(id, feedName), bx)
 }
 
 // SubscribeBkFeedEth subscribes to the Eth node feed.
@@ -203,23 +189,16 @@ func newSubTxFeedRequestEth(id int) *Request {
 	})
 }
 
+// TODO: add filters
 func newSubTxFeedRequestBX(
 	id int,
 	feedName string,
-	excTxContents bool,
-	duplicates bool,
-	incFromBlockchain bool,
-	useGoGateway bool,
 ) *Request {
 	options := make(map[string]interface{})
 
-	if !useGoGateway {
-		options["duplicates"] = duplicates
-		options["include_from_blockchain"] = incFromBlockchain
-	}
-
-	options["include"] = []string{}
-	options["filters"] = ""
+	options["duplicates"] = false
+	options["include_from_blockchain"] = false
+	options["include"] = []string{"raw_tx"}
 
 	return NewRequest(id, "subscribe", []interface{}{
 		feedName, options,

@@ -4,21 +4,6 @@ import "github.com/urfave/cli/v2"
 
 // CLI flags for ethcompare
 var (
-	Gateway = &cli.StringFlag{
-		Name:  "gateway",
-		Usage: "gateway websocket connection string",
-		Value: "ws://127.0.0.1:28333/ws",
-	}
-	GatewayGrpc = &cli.StringFlag{
-		Name:  "gateway-grpc",
-		Usage: "gateway grpc connection string",
-		Value: "127.0.0.1:5001",
-	}
-	Eth = &cli.StringFlag{
-		Name:  "eth",
-		Usage: "ethereum node websocket connection string",
-		Value: "ws://127.0.0.1:8546",
-	}
 	TxFeedName = &cli.StringFlag{
 		Name:  "feed-name",
 		Usage: "specify feed name, possible values: 'newTxs', 'pendingTxs', 'transactionStatus'",
@@ -62,7 +47,7 @@ var (
 		Usage: "seconds to wait before starting to compare feeds",
 		Value: 60,
 	}
-	TrailTime = &cli.IntFlag{
+	TxTrailTime = &cli.IntFlag{
 		Name:  "trail-time",
 		Usage: "seconds to wait after interval to receive tx on both feeds",
 		Value: 60,
@@ -96,11 +81,6 @@ var (
 		Usage: "use cloud API",
 		Value: false,
 	}
-	Verbose = &cli.BoolFlag{
-		Name:  "verbose",
-		Usage: "level of output",
-		Value: false,
-	}
 	ExcludeFromBlockchain = &cli.BoolFlag{
 		Name:  "exclude-from-blockchain",
 		Usage: "exclude from blockchain",
@@ -115,15 +95,9 @@ var (
 		Name:  "auth-header",
 		Usage: "authorization header created with account id and password",
 	}
-	UseGoGateway = &cli.BoolFlag{
-		Name:  "use-go-gateway",
-		Usage: "use GO Gateway",
-		Value: false,
-	}
 	NodeWSEndpoint = &cli.StringFlag{
-		Name:     "node-ws-endpoint",
-		Usage:    "Ethereum node ws endpoint. Sample Input: ws://127.0.0.1:8546",
-		Required: true,
+		Name:  "node-ws-endpoint",
+		Usage: "Ethereum node ws endpoint. Sample Input: ws://127.0.0.1:8546",
 	}
 	BXEndpoint = &cli.StringFlag{
 		Name:  "blxr-endpoint",
@@ -137,9 +111,8 @@ var (
 			"https://bloxroute.com/docs/bloxroute-documentation/cloud-api/overview/",
 	}
 	SenderPrivateKey = &cli.StringFlag{
-		Name:     "sender-private-key",
-		Usage:    "Sender's private key, which starts with 0x.",
-		Required: true,
+		Name:  "sender-private-key",
+		Usage: "Sender's private key, which starts with 0x.",
 	}
 	ChainID = &cli.IntFlag{
 		Name:  "chain-id",
@@ -152,13 +125,60 @@ var (
 		Value: 1,
 	}
 	GasPrice = &cli.Int64Flag{
-		Name:     "gas-price",
-		Usage:    "Transaction gas price in Gwei.",
-		Required: true,
+		Name:  "gas-price",
+		Usage: "Transaction gas price in Gwei.",
 	}
 	Delay = &cli.IntFlag{
 		Name:  "delay",
 		Usage: "Time (sec) to sleep between two consecutive groups.",
 		Value: 30,
+	}
+	FiberUri = &cli.StringFlag{
+		Name:  "fiber-uri",
+		Usage: "Fiber URI",
+	}
+	FiberAPIKey = &cli.StringFlag{
+		Name:  "fiber-api-key",
+		Usage: "Fiber API key",
+	}
+	MEVLinkAPIKey = &cli.StringFlag{
+		Name:  "mevLink-api-key",
+		Usage: "mevLink api key",
+	}
+	MEVLinkAPISecret = &cli.StringFlag{
+		Name:  "mevLink-api-secret",
+		Usage: "mevLink api secret",
+	}
+	FiberAuthKey = &cli.StringFlag{
+		Name:  "fiber-auth-key",
+		Usage: "Fiber auth key",
+	}
+	NetworkNumber = &cli.IntFlag{
+		Name:  "network-num",
+		Usage: "network number, 1 for ETH(default), 56 for BSC",
+		Value: 1,
+	}
+	FirstFeed = &cli.StringFlag{
+		Name:     "first-feed",
+		Usage:    "first feed to compare, can be: Mevlink, Fiber, GatewayWS, GatewayGRPC",
+		Required: true,
+	}
+	SecondFeed = &cli.StringFlag{
+		Name:     "second-feed",
+		Usage:    "second feed to compare, can be: Mevlink, Fiber, GatewayWS, GatewayGRPC",
+		Required: true,
+	}
+	FirstFeedURI = &cli.StringFlag{
+		Name:  "first-feed-uri",
+		Usage: "first feed uri",
+	}
+	SecondFeedURI = &cli.StringFlag{
+		Name:  "second-feed-uri",
+		Usage: "second feed uri",
+	}
+	BlockFeedURI = &cli.StringFlag{
+		Name:  "block-feed-uri",
+		Usage: "uri for block feed(gw/cloud-api)",
+		Value: "ws://127.0.0.1:28333/ws",
 	}
 )

@@ -77,6 +77,23 @@ Here is an example of using `blocks` command:
 go run cmd/ethcompare/main.go blocks --gateway wss://uk.eth.blxrbdn.com/ws --auth-header <YOUR HEADER> --eth wss://mainnet.infura.io/ws/v3/17beec01342c4caf8ff34de03daa77fc
 ```
 
+### Latency compare
+This benchmark is invoked by `feed-latency`, after compare is finish it generates output.csv file with hash, time gw sent tx and time we got it in feed and the diff command which has the following options:
+```
+ --first-feed-uri   first feed uri
+ --auth-header      authorization header created with account id and password
+ --interval         length of feed sample interval in seconds
+```
+The following command can be used to print help related to `feed-latency` command:
+```shell
+go run cmd/ethcompare/main.go feed-latency -h
+```
+#### Example
+Here is an example of using `feed-latency` command:
+```shell
+go run cmd/ethcompare/main.go feed-latency --first-feed-uri <URI> --auth-header <YOUR HEADER> --interval  <INTERVAL>
+```
+
 ### Transactions speed
 This benchmark is invoked by `txspeed` command which has the following options:
 ```
