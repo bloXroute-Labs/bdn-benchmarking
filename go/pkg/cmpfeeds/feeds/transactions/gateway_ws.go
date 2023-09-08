@@ -29,8 +29,8 @@ func NewGatewayWS(c *cli.Context, uri string) *GatewayWS {
 	}
 	return &GatewayWS{
 		uri:       uri,
-		feedName:  c.String(flags.TxFeedName.Name),
-		authToken: c.String(flags.AuthHeader.Name),
+		feedName:  c.String(flags.BloxrouteTxFeedName.Name),
+		authToken: c.String(flags.BloxrouteAuthHeader.Name),
 	}
 }
 

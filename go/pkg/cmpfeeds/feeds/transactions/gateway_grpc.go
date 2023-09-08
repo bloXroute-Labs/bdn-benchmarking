@@ -47,7 +47,7 @@ func (g GatewayGRPC) Receive(ctx context.Context, wg *sync.WaitGroup, out chan *
 	log.Infof("%s connection to %s established", g.Name(), g.uri)
 
 	//TODO: add filters
-	stream, err := client.NewTxs(ctx, &pb.TxsRequest{Filters: "", AuthHeader: g.c.String(flags.AuthHeader.Name)})
+	stream, err := client.NewTxs(ctx, &pb.TxsRequest{Filters: "", AuthHeader: g.c.String(flags.BloxrouteAuthHeader.Name)})
 	if err != nil {
 		log.Fatalf("could not create %s: %v", g.Name(), err)
 	}

@@ -31,7 +31,7 @@ func NewGatewayWS(c *cli.Context, uri string) *GatewayWS {
 	}
 	return &GatewayWS{
 		uri:        uri,
-		authHeader: c.String(flags.AuthHeader.Name),
+		authHeader: c.String(flags.BloxrouteAuthHeader.Name),
 	}
 }
 

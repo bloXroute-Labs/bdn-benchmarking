@@ -2,71 +2,77 @@
 
 ## Objective
 This package contains a command line utility which is intended for benchmarking
-performance of Eth node vs Go gateway. It has the following functionality:
+performance of source A vs source B. It has the following functionality:
 * Compare transaction streams.
 * Compare block streams.
-* Compare transaction send speed.
+* Compare feed latency.
 
 ## Usage
-This command line utility has three top-level commands:
-* `transactions` - compares stream of txs from gateway vs node.
-* `blocks` - compares stream of blocks from gateway vs node.
-* `txspeed` - compares transaction sending speed by submitting conflicting txs
-* `txwsgrpc` - compares transaction sending by websocket or gRPC connection
-with the same nonce to node and gateway (so only one tx will land on chain).
+This command line 1 top level command:
+* `compare` - compares stream of `transactions` or `blocks` from source A vs source B. And `feed-latency`.
+Available subcommands:
+* `transactions` - compares transaction streams.
+* `blocks` - compares block streams.
+* `feed-latency` - compares feed latency.
 
-### Transactions steam
-This benchmark is invoked by `transactions` command which has the following options:
+### Transactions streams compare
+This benchmark is invoked by `compare transactions` command which has the following options:
 ```
-   --gateway value            gateway websocket connection string (default: "ws://127.0.0.1:28333/ws")
-   --eth value                ethereum node websocket connection string (default: "ws://127.0.0.1:8546")
-   --feed-name value          specify feed name, possible values: 'newTxs', 'pendingTxs', 'transactionStatus' (default: "newTxs")
-   --min-gas-price value      gas price in gigawei (default: 0)
-   --addresses value          comma separated list of Ethereum addresses
-   --exclude-tx-contents      optionally exclude tx contents (default: false)
-   --interval value           length of feed sample interval in seconds (default: 60)
-   --num-intervals value      number of intervals (default: 1)
-   --lead-time value          seconds to wait before starting to compare feeds (default: 60)
-   --trail-time value         seconds to wait after interval to receive tx on both feeds (default: 60)
-   --dump value               specify info to dump, possible values: 'ALL', 'MISSING', 'ALL,MISSING'
-   --exclude-duplicates       for pendingTxs only (default: true)
-   --ignore-delta value       ignore tx with delta above this amount (seconds) (default: 5)
-   --use-cloud-api            use cloud API (default: false)
-   --verbose                  level of output (default: false)
-   --exclude-from-blockchain  exclude from blockchain (default: false)
-   --cloud-api-ws-uri value   specify websocket connection string for cloud API (default: "wss://api.blxrbdn.com/ws")
-   --auth-header value        authorization header created with account id and password
-   --use-go-gateway           use GO Gateway (default: false)
+   --first-feed               first feed to compare, can be: Mevlink, Fiber, GatewayWS, GatewayGRPC
+   --second-feed              second feed to compare, can be: Mevlink, Fiber, GatewayWS, GatewayGRPC 
+   --first-feed-uri           first feed uri (For Bloxroute Gateway GRPC default: 127.0.0.1:5002, for Fiber: beta.fiberapi.io:8080)
+   --second-feed-uri          second feed uri (For Bloxroute Gateway GRPC default: 127.0.0.1:5002, for Fiber: beta.fiberapi.io:8080)
+   --bloxroute-auth-header    authorization header created with account id and secret hash for bloxroute feeds authorization
+   --fiber-auth-key           fiber auth key
+   --mevlink-api-key          mevlink api key
+   --mevkink-api-secret       mevlink api secret
+   --block-feed-uri           block feed uri (to check that transactions are in blocks) (default is ws://127.0.0.1:28333/ws)
+   --interval                 length of feed sample interval in seconds(default: 60sec)
+   --num-intervals            number of intervals(default: 1)
+   --lead-time                seconds to wait before starting to compare feeds(default: 60sec)
+   --trail-time               seconds to wait after interval to receive blocks on both feeds(default: 60sec)
+   --dump                     specify info to dump, possible values: 'ALL', 'MISSING', 'ALL,MISSING'
+   --ignore-delta             ignore blocks with delta above this amount (seconds) (default: 5)
    --help, -h                 show help (default: false)
 ```
-The following command can be used to print help related to `transactions` command:
+
+#### Example
+Here is an example of using `transactions` command:
+The following command can be used to print help related to `blocks` command:
 ```shell
 go run cmd/ethcompare/main.go transactions -h
 ```
-#### Example
-Here is an example of using `transactions` command:
+Gateway GRPC vs Gateway WS:
 ```shell
-go run cmd/ethcompare/main.go transactions --gateway wss://uk.eth.blxrbdn.com/ws --auth-header <YOUR HEADER> --eth wss://mainnet.infura.io/ws/v3/17beec01342c4caf8ff34de03daa77fc
+go run cmd/ethcompare/main.go transactions --bloxroute-auth-header <bloxroute-auth-header> --first-feed GatewayGRPC --second-feed GatewayWS --first-feed-uri 127.0.0.1:5002 --second-feed-uri ws://127.0.0.1:28333/ws --block-feed-uri ws://127.0.0.1:28334/ws --trail-time 10 --interval 180  --dump "ALL,MISSING"  
+```
+Gateway GRPC vs Fiber:
+```shell
+go run cmd/ethcompare/main.go transactions --bloxroute-auth-header <bloxroute-auth-header> --fiber-auth-key <fiber-auth-key> --first-feed GatewayGRPC --second-feed Fiber --first-feed-uri 127.0.0.1:5002 --block-feed-uri ws://127.0.0.1:28334/ws --trail-time 10 --interval 180  --dump "ALL,MISSING"  
+```
+Gateway GRPC vs Mevlink:
+```shell
+go run cmd/ethcompare/main.go transactions --bloxroute-auth-header <bloxroute-auth-header> --mevLink-api-key <mevlink-api-key> --mevLink-api-secret <mevlink-api-secret> --first-feed GatewayGRPC --second-feed Mevlink --first-feed-uri 127.0.0.1:5002 --block-feed-uri ws://127.0.0.1:28334/ws --trail-time 10 --interval 180  --dump "ALL,MISSING"  
 ```
 
-### Blocks stream
-This benchmark is invoked by `blocks` command which has the following options:
+### Blocks streams compare
+This benchmark is invoked by `compare blocks` command which has the following options:
 ```
-   --gateway value           gateway websocket connection string (default: "ws://127.0.0.1:28333/ws")
-   --eth value               ethereum node websocket connection string (default: "ws://127.0.0.1:8546")
-   --feed-name value         specify feed name, possible values: 'newBlocks', 'bdnBlocks' (default: "bdnBlocks")
-   --exclude-block-contents  optionally exclude block contents (default: false)
-   --interval value          length of feed sample interval in seconds (default: 60)
-   --num-intervals value     number of intervals (default: 1)
-   --lead-time value         seconds to wait before starting to compare feeds (default: 60)
-   --trail-time value        seconds to wait after interval to receive blocks on both feeds (default: 60)
-   --dump value              specify info to dump, possible values: 'ALL', 'MISSING', 'ALL,MISSING'
-   --ignore-delta value      ignore blocks with delta above this amount (seconds) (default: 5)
-   --use-cloud-api           use cloud API (default: false)
-   --auth-header value       authorization header created with account id and password
-   --cloud-api-ws-uri value  specify websocket connection string for cloud API (default: "wss://api.blxrbdn.com/ws")
-   --help, -h                show help (default: false)
+   --first-feed               first feed to compare, can be: Mevlink, Fiber, GatewayWS, GatewayGRPC
+   --second-feed              second feed to compare, can be: Mevlink, Fiber, GatewayWS, GatewayGRPC 
+   --first-feed-uri           first feed uri (For Bloxroute Gateway GRPC default: 127.0.0.1:5002, for Fiber: beta.fiberapi.io:8080)
+   --second-feed-uri          second feed uri (For Bloxroute Gateway GRPC default: 127.0.0.1:5002, for Fiber: beta.fiberapi.io:8080)
+   --bloxroute-auth-header    authorization header created with account id and secret hash for bloxroute feeds authorization
+   --fiber-auth-key           fiber auth key
+   --interval                 length of feed sample interval in seconds(default: 60sec)
+   --num-intervals            number of intervals(default: 1)
+   --lead-time                seconds to wait before starting to compare feeds(default: 60sec)
+   --trail-time               seconds to wait after interval to receive blocks on both feeds(default: 60sec)
+   --dump                     specify info to dump, possible values: 'ALL', 'MISSING', 'ALL,MISSING'
+   --ignore-delta             ignore blocks with delta above this amount (seconds) (default: 5)
+   --help, -h                 show help (default: false)
 ```
+
 The following command can be used to print help related to `blocks` command:
 ```shell
 go run cmd/ethcompare/main.go blocks -h
@@ -74,7 +80,7 @@ go run cmd/ethcompare/main.go blocks -h
 #### Example
 Here is an example of using `blocks` command:
 ```shell
-go run cmd/ethcompare/main.go blocks --gateway wss://uk.eth.blxrbdn.com/ws --auth-header <YOUR HEADER> --eth wss://mainnet.infura.io/ws/v3/17beec01342c4caf8ff34de03daa77fc
+go run cmd/ethcompare/main.go blocks --first-feed GatewayGRPC --second-feed Fiber --bloxroute-auth-header <bloxroute-auth-header> --fiber-auth-key <fiber-auth-key> --trail-time 10 --interval 180 --dump "ALL,MISSING" —first-feed-uri localhost:5002
 ```
 
 ### Latency compare
@@ -92,29 +98,6 @@ go run cmd/ethcompare/main.go feed-latency -h
 Here is an example of using `feed-latency` command:
 ```shell
 go run cmd/ethcompare/main.go feed-latency --first-feed-uri <URI> --auth-header <YOUR HEADER> --interval  <INTERVAL>
-```
-
-### Transactions speed
-This benchmark is invoked by `txspeed` command which has the following options:
-```
-   --node-ws-endpoint value    Ethereum node ws endpoint. Sample Input: ws://127.0.0.1:8546
-   --blxr-endpoint value       bloXroute endpoint. Use wss://api.blxrbdn.com/ws for Cloud-API. (default: "wss://api.blxrbdn.com/ws")
-   --blxr-auth-header value    bloXroute authorization header. Use base64 encoded value of account_id:secret_hash for Cloud-API. For more information, see https://bloxroute.com/docs/bloxroute-documentation/cloud-api/overview/
-   --sender-private-key value  Sender's private key, which starts with 0x.
-   --chain-id value            EVM chain id (default: 1)
-   --num-tx-groups value       Number of groups of transactions to submit. (default: 1)
-   --gas-price value           Transaction gas price in Gwei. (default: 0)
-   --delay value               Time (sec) to sleep between two consecutive groups. (default: 30)
-   --help, -h                  show help (default: false)
-```
-The following command can be used to print help related to `txspeed` command:
-```shell
-go run cmd/ethcompare/main.go txspeed -h
-```
-#### Example
-Here is an example of using `txspeed` command:
-```shell
-go run cmd/ethcompare/main.go txspeed --node-ws-endpoint wss://rpc-mainnet.matic.quiknode.pro --chain-id 137 --sender-private-key <YOUR PRIVATE KEY> --blxr-endpoint ws://127.0.0.1:28333 --blxr-auth-header <YOUR AUTH HEADER> --gas-price 50 --num-tx-groups 10
 ```
 
 ## Installation
