@@ -159,7 +159,7 @@ func (cs *CompareBlocksService) Run(c *cli.Context) error {
 	var (
 		leadTimeSec  = c.Int(flags.LeadTime.Name)
 		intervalSec  = c.Int(flags.Interval.Name)
-		trailTimeSec = c.Int(flags.TxTrailTime.Name)
+		trailTimeSec = c.Int(flags.TrailTime.Name)
 		ctx, cancel  = context.WithCancel(context.Background())
 
 		readerGroup sync.WaitGroup
@@ -199,14 +199,12 @@ func (cs *CompareBlocksService) Run(c *cli.Context) error {
 					"-----------------------------------------------------\n"+
 						"Interval (%d/%d): %d seconds. \n"+
 						"End time: %s \n"+
-						"Minimum gas price: %f \n"+
 						"%s\n",
 					numIntervalsPassed,
 					cs.numIntervals,
 					intervalSec,
 					time.Now().Format("2006-01-02T15:04:05.000"),
-					c.Float64(flags.MinGasPrice.Name),
-					cs.stats(c.Int(flags.TxIgnoreDelta.Name)),
+					cs.stats(c.Int(flags.IgnoreDelta.Name)),
 				)
 
 				cs.leadNewBlocks = utils.NewHashSet()

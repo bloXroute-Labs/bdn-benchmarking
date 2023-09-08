@@ -30,19 +30,9 @@ type Connection struct {
 	conn *websocket.Conn
 }
 
-// SubscribeTxFeedEth subscribes to the ETH node feed.
-func (c *Connection) SubscribeTxFeedEth(id int) (*Subscription, error) {
-	return c.subscribe(newSubTxFeedRequestEth(id), eth)
-}
-
 // SubscribeTxFeedBX subscribes to BX gateway feed.
 func (c *Connection) SubscribeTxFeedBX(id int, feedName string) (*Subscription, error) {
 	return c.subscribe(newSubTxFeedRequestBX(id, feedName), bx)
-}
-
-// SubscribeBkFeedEth subscribes to the Eth node feed.
-func (c *Connection) SubscribeBkFeedEth(id int) (*Subscription, error) {
-	return c.subscribe(newSubBkFeedRequestEth(id), eth)
 }
 
 // SubscribeBkFeedBX subscribes to the BX gateway feed.
@@ -83,22 +73,6 @@ func (c *Connection) subscribe(req *Request, t subscriptionType) (*Subscription,
 		Conn: c,
 		Type: t,
 	}, nil
-}
-
-// Call is a convenience method to make an RPC call.
-func (c *Connection) Call(req *Request) ([]byte, error) {
-	body, err := json.Marshal(req)
-	if err != nil {
-		return nil, err
-	}
-
-	if err = c.conn.WriteMessage(websocket.TextMessage, body); err != nil {
-		return nil, err
-	}
-
-	_, data, err := c.conn.ReadMessage()
-
-	return data, err
 }
 
 // Close closes a connection.

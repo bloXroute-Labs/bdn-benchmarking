@@ -54,7 +54,7 @@ func (cf *CompareFeedTransactionsService) Run(c *cli.Context) error {
 	defer cancel()
 	timer := time.NewTimer(time.Duration(c.Int(flags.Interval.Name)) * time.Second)
 
-	stream, _ := client.NewTxs(callContext, &pb.TxsRequest{Filters: "", AuthHeader: c.String(flags.AuthHeader.Name)})
+	stream, _ := client.NewTxs(callContext, &pb.TxsRequest{Filters: "", AuthHeader: c.String(flags.BloxrouteAuthHeader.Name)})
 
 	for {
 		select {
