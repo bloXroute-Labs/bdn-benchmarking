@@ -14,6 +14,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
@@ -36,13 +37,18 @@ func NewCompareFeedTransactions() *CompareFeedTransactionsService {
 
 func (cf *CompareFeedTransactionsService) Run(c *cli.Context) error {
 	log.Info("Initiating connection")
+
 	dialOptions := []grpc.DialOption{
 		grpc.WithInitialWindowSize(constant.WindowSize),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	}
+
+	if c.Bool(flags.FirstFeedEnableTLS.Name) {
+		dialOptions = append(dialOptions, grpc.WithTransportCredentials(credentials.NewClientTLSFromCert(nil, "")))
+	} else {
+		dialOptions = append(dialOptions, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
 
 	conn, err := grpc.Dial(c.String(flags.FirstFeedURI.Name), dialOptions...)
-
 	if err != nil {
 		log.Errorf("failed to connect, err %v", err)
 		return err
@@ -54,7 +60,11 @@ func (cf *CompareFeedTransactionsService) Run(c *cli.Context) error {
 	defer cancel()
 	timer := time.NewTimer(time.Duration(c.Int(flags.Interval.Name)) * time.Second)
 
-	stream, _ := client.NewTxs(callContext, &pb.TxsRequest{Filters: "", AuthHeader: c.String(flags.BloxrouteAuthHeader.Name)})
+	stream, err := client.NewTxs(callContext, &pb.TxsRequest{Filters: "", AuthHeader: c.String(flags.BloxrouteAuthHeader.Name)})
+	if err != nil {
+		log.Errorf("failed to create stream, err %v", err)
+		return err
+	}
 
 	for {
 		select {

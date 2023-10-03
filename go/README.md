@@ -22,6 +22,8 @@ This benchmark is invoked by `compare transactions` command which has the follow
    --second-feed              second feed to compare, can be: Mevlink, Fiber, GatewayWS, GatewayGRPC 
    --first-feed-uri           first feed uri (For Bloxroute Gateway GRPC default: 127.0.0.1:5002, for Fiber: beta.fiberapi.io:8080)
    --second-feed-uri          second feed uri (For Bloxroute Gateway GRPC default: 127.0.0.1:5002, for Fiber: beta.fiberapi.io:8080)
+   --first-feed-enable-tls    enable tls for first feed
+   --second-feed-enable-tls   enable tls for second feed
    --bloxroute-auth-header    authorization header created with account id and secret hash for bloxroute feeds authorization
    --fiber-auth-key           fiber auth key
    --mevlink-api-key          mevlink api key
@@ -55,6 +57,12 @@ Gateway GRPC vs Mevlink:
 go run cmd/ethcompare/main.go transactions --bloxroute-auth-header <bloxroute-auth-header> --mevLink-api-key <mevlink-api-key> --mevLink-api-secret <mevlink-api-secret> --first-feed GatewayGRPC --second-feed Mevlink --first-feed-uri 127.0.0.1:5002 --block-feed-uri ws://127.0.0.1:28334/ws --trail-time 10 --interval 180  --dump "ALL,MISSING"  
 ```
 
+Enterprise streaming endpoint gRPC(https://docs.bloxroute.com/introduction/cloud-api-ips) vs Fiber:
+```shell
+go run cmd/ethcompare/main.go transactions --bloxroute-auth-header <bloxroute-auth-header> --fiber-auth-key <fiber-auth-key> --first-feed GatewayGRPC --second-feed Fiber --first-feed-uri germany.eth.blxrbdn.com:5005 --block-feed-uri wss://germany.eth.blxrbdn.com/ws --trail-time 10 --interval 180  --dump "ALL,MISSING" --first-feed-enable-tls 
+```
+Note: `--first-feed-enable-tls flag` is required
+
 ### Blocks streams compare
 This benchmark is invoked by `compare blocks` command which has the following options:
 ```
@@ -62,6 +70,8 @@ This benchmark is invoked by `compare blocks` command which has the following op
    --second-feed              second feed to compare, can be: Mevlink, Fiber, GatewayWS, GatewayGRPC 
    --first-feed-uri           first feed uri (For Bloxroute Gateway GRPC default: 127.0.0.1:5002, for Fiber: beta.fiberapi.io:8080)
    --second-feed-uri          second feed uri (For Bloxroute Gateway GRPC default: 127.0.0.1:5002, for Fiber: beta.fiberapi.io:8080)
+   --first-feed-enable-tls    enable tls for first feed
+   --second-feed-enable-tls   enable tls for second feed
    --bloxroute-auth-header    authorization header created with account id and secret hash for bloxroute feeds authorization
    --fiber-auth-key           fiber auth key
    --interval                 length of feed sample interval in seconds(default: 60sec)
@@ -78,17 +88,25 @@ The following command can be used to print help related to `blocks` command:
 go run cmd/ethcompare/main.go blocks -h
 ```
 #### Example
-Here is an example of using `blocks` command:
+Here is an example of using `blocks` command Gateway GRPC vs Fiber:
 ```shell
-go run cmd/ethcompare/main.go blocks --first-feed GatewayGRPC --second-feed Fiber --bloxroute-auth-header <bloxroute-auth-header> --fiber-auth-key <fiber-auth-key> --trail-time 10 --interval 180 --dump "ALL,MISSING" —first-feed-uri localhost:5002
+go run cmd/ethcompare/main.go blocks --first-feed GatewayGRPC --second-feed Fiber --bloxroute-auth-header <bloxroute-auth-header> --fiber-auth-key <fiber-auth-key> --trail-time 10 --interval 180 --dump "ALL,MISSING" —-first-feed-uri localhost:5002
 ```
+
+#### Example
+Here is an example of using `blocks` command Enterprise streaming endpoint gRPC(https://docs.bloxroute.com/introduction/cloud-api-ips) vs Fiber:
+```shell
+go run cmd/ethcompare/main.go blocks --first-feed GatewayGRPC --second-feed Fiber --bloxroute-auth-header <bloxroute-auth-header> --fiber-auth-key <fiber-auth-key> --trail-time 10 --interval 180 --dump "ALL,MISSING" —-first-feed-uri germany.eth.blxrbdn.com:5005 --first-feed-enable-tls
+```
+Note: `--first-feed-enable-tls flag` is required
 
 ### Latency compare
 This benchmark is invoked by `feed-latency`, after compare is finish it generates output.csv file with hash, time gw sent tx and time we got it in feed and the diff command which has the following options:
 ```
- --first-feed-uri   first feed uri
- --auth-header      authorization header created with account id and password
- --interval         length of feed sample interval in seconds
+ --first-feed-uri          first feed uri
+ --first-feed-enable-tls   enable tls for first feed
+ --auth-header             authorization header created with account id and password
+ --interval                length of feed sample interval in seconds
 ```
 The following command can be used to print help related to `feed-latency` command:
 ```shell
