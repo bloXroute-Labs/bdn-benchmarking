@@ -188,7 +188,7 @@ func (s *TxFilterService) writeToFile() error {
 			s.log.Errorf("cannot close file %q: %v", fileName, err)
 		}
 		if err = s.uploadFileToDrive(fileName); err != nil {
-			s.log.Errorf("failed to upload file to goole drive %q: %v", fileName, err)
+			s.log.Errorf("failed to upload file to google drive %q: %v", fileName, err)
 		}
 		if err = s.uploadFileToDropbox(fileName); err != nil {
 			s.log.Errorf("failed to upload file to dropbox %q: %v", fileName, err)
@@ -382,7 +382,6 @@ func getBxTimestamp(db *sql.DB, txHash string) (string, error) {
 }
 
 func getTxReceipt(txHash string) (*types.Receipt, error) {
-	// sleep in order to be sure that the tx is confirmed, and we can get the receipt
 	time.Sleep(5 * time.Second)
 
 	client, err := ethclient.Dial(providerURL)
@@ -490,11 +489,11 @@ func (s *TxFilterService) updateTxFilterInfo(tx bxBkTx, blockNum int64, timeRece
 
 	var isPrivateTx bool
 	txTraceInfo, err := getTxTraceInfo(tx.Hash, authHeader)
+	if err != nil {
+		s.log.Warnf("failed to fetch txTrace for tx: %v, error: %v", tx.Hash, err)
+		return
+	}
 	if txTraceInfo.Txtrace == nil {
-		if err != nil {
-			s.log.Warnf("failed to fetch txTrace for tx: %v, error: %v", tx.Hash, err)
-			return
-		}
 		// if transaction was not found in txtrace it is private
 		isPrivateTx = true
 	}
@@ -585,15 +584,21 @@ func (s *TxFilterService) readFeedFromBX(
 				}
 			)
 
+			if err != nil {
+				s.log.Errorf("socket connection error: %v", err)
+				if err = sub.Unsubscribe(); err != nil {
+					s.log.Errorf("cannot unsubscribe from feed %q: %v", s.feedName, err)
+				}
+				if err = conn.Close(); err != nil {
+					s.log.Errorf("cannot close socket connection to %s: %v", uri, err)
+				}
+				break
+			}
+
 			select {
 			case <-ctx.Done():
 				return
 			case out <- msg:
-			}
-
-			if err != nil {
-				s.log.Errorf("socket connection error: %v", err)
-				break
 			}
 		}
 	}
