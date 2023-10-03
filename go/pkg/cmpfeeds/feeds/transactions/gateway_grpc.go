@@ -14,23 +14,25 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
 
 type GatewayGRPC struct {
-	uri string
-	c   *cli.Context
+	uri       string
+	c         *cli.Context
+	enableTLS bool
 }
 
 const defaultGatewayGRPCURI = "127.0.0.1:5002"
 
-func NewGatewayGRPC(c *cli.Context, uri string) *GatewayGRPC {
+func NewGatewayGRPC(c *cli.Context, uri string, enableTLS bool) *GatewayGRPC {
 	if uri == "" {
 		uri = defaultGatewayGRPCURI
 	}
-	return &GatewayGRPC{uri: uri, c: c}
+	return &GatewayGRPC{uri: uri, c: c, enableTLS: enableTLS}
 }
 
 func (g GatewayGRPC) Receive(ctx context.Context, wg *sync.WaitGroup, out chan *Message) {
@@ -38,19 +40,30 @@ func (g GatewayGRPC) Receive(ctx context.Context, wg *sync.WaitGroup, out chan *
 
 	log.Infof("Initiating connection to %s %v", g.Name(), g.uri)
 
-	conn, err := grpc.Dial(g.uri, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithInitialWindowSize(constant.WindowSize))
+	dialOptions := []grpc.DialOption{
+		grpc.WithInitialWindowSize(constant.WindowSize),
+	}
+
+	if g.enableTLS {
+		dialOptions = append(dialOptions, grpc.WithTransportCredentials(credentials.NewClientTLSFromCert(nil, "")))
+	} else {
+		dialOptions = append(dialOptions, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	}
+
+	conn, err := grpc.Dial(g.uri, dialOptions...)
 	if err != nil {
 		log.Fatalf("failed to connect %s: %v", g.Name(), err)
 	}
 	client := pb.NewGatewayClient(conn)
-
-	log.Infof("%s connection to %s established", g.Name(), g.uri)
 
 	//TODO: add filters
 	stream, err := client.NewTxs(ctx, &pb.TxsRequest{Filters: "", AuthHeader: g.c.String(flags.BloxrouteAuthHeader.Name)})
 	if err != nil {
 		log.Fatalf("could not create %s: %v", g.Name(), err)
 	}
+
+	log.Infof("%s connection to %s established", g.Name(), g.uri)
+
 	defer func() {
 		if err := stream.CloseSend(); err != nil {
 			log.Errorf("failed to close %s stream: %v", g.Name(), err)

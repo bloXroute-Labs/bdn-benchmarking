@@ -64,12 +64,12 @@ func NewCompareBlocksService() *CompareBlocksService {
 	}
 }
 
-func (cs *CompareBlocksService) feedBuilders(c *cli.Context, feedName, uri string) (blocksFeed, error) {
+func (cs *CompareBlocksService) feedBuilders(c *cli.Context, feedName, uri string, enableTLS bool) (blocksFeed, error) {
 	switch feedName {
 	case "GatewayWS":
 		return blocks.NewGatewayWS(c, uri), nil
 	case "GatewayGRPC":
-		return blocks.NewGatewayGRPC(c, uri), nil
+		return blocks.NewGatewayGRPC(c, uri, enableTLS), nil
 	case "Fiber":
 		return blocks.NewFiber(c, uri), nil
 	}
@@ -79,12 +79,12 @@ func (cs *CompareBlocksService) feedBuilders(c *cli.Context, feedName, uri strin
 
 func (cs *CompareBlocksService) Run(c *cli.Context) error {
 	var err error
-	cs.firstFeed, err = cs.feedBuilders(c, c.String(flags.FirstFeed.Name), c.String(flags.FirstFeedURI.Name))
+	cs.firstFeed, err = cs.feedBuilders(c, c.String(flags.FirstFeed.Name), c.String(flags.FirstFeedURI.Name), c.Bool(flags.FirstFeedEnableTLS.Name))
 	if err != nil {
 		return err
 	}
 
-	cs.secondFeed, err = cs.feedBuilders(c, c.String(flags.SecondFeed.Name), c.String(flags.SecondFeedURI.Name))
+	cs.secondFeed, err = cs.feedBuilders(c, c.String(flags.SecondFeed.Name), c.String(flags.SecondFeedURI.Name), c.Bool(flags.SecondFeedEnableTLS.Name))
 	if err != nil {
 		return err
 	}

@@ -77,6 +77,16 @@ var (
 		Name:  "second-feed-uri",
 		Usage: "second feed uri",
 	}
+	FirstFeedEnableTLS = &cli.BoolFlag{
+		Name:  "first-feed-enable-tls",
+		Usage: "enable tls for grpc cloud-api connections",
+		Value: false,
+	}
+	SecondFeedEnableTLS = &cli.BoolFlag{
+		Name:  "second-feed-enable-tls",
+		Usage: "enable tls for grpc cloud-api connections",
+		Value: false,
+	}
 	BlockFeedURI = &cli.StringFlag{
 		Name:  "block-feed-uri",
 		Usage: "uri for block feed(gw/cloud-api)",

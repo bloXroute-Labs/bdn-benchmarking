@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"performance/internal/pkg/flags"
+	"performance/pkg/constant"
 	"sync"
 	"time"
 
@@ -11,30 +12,41 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 )
 
 type GatewayGRPC struct {
-	uri string
-	c   *cli.Context
+	uri       string
+	c         *cli.Context
+	enableTLS bool
 }
 
 const defaultGatewayGRPCURI = "127.0.0.1:5002"
 
-func NewGatewayGRPC(c *cli.Context, uri string) *GatewayGRPC {
+func NewGatewayGRPC(c *cli.Context, uri string, enableTLS bool) *GatewayGRPC {
 	if uri == "" {
 		uri = defaultGatewayGRPCURI
 	}
-	return &GatewayGRPC{uri: uri, c: c}
+	return &GatewayGRPC{uri: uri, c: c, enableTLS: enableTLS}
 }
 
 func (g GatewayGRPC) Receive(ctx context.Context, wg *sync.WaitGroup, out chan *Message) {
 	defer wg.Done()
 
 	log.Infof("Initiating connection to %s %v", g.Name(), g.uri)
+	dialOptions := []grpc.DialOption{
+		grpc.WithInitialWindowSize(constant.WindowSize),
+	}
 
-	conn, err := grpc.Dial(g.uri, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if g.enableTLS {
+		dialOptions = append(dialOptions, grpc.WithTransportCredentials(credentials.NewClientTLSFromCert(nil, "")))
+	} else {
+		dialOptions = append(dialOptions, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	}
+
+	conn, err := grpc.Dial(g.uri, dialOptions...)
 	if err != nil {
 		log.Fatalf("failed to connect %s: %v", g.Name(), err)
 	}
