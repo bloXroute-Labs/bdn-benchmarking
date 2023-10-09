@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	pb "github.com/bloXroute-Labs/gateway/v2/protobuf"
 	"github.com/ethereum/go-ethereum/core/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -19,6 +20,21 @@ type Transaction struct {
 	Nonce  uint64
 	Sender string
 	Hash   string
+}
+
+type BatchMessage struct {
+	RequestTime  time.Time
+	ResponseTime time.Time
+	TxHashes     []*pb.TxIndex
+	Size         int
+}
+
+type wsBatchTxResponse struct {
+	JSONRPC string `json:"jsonrpc"`
+	ID      int    `json:"id"`
+	Result  struct {
+		TxHashes []string `json:"txHashes"`
+	} `json:"result"`
 }
 
 func newTransaction(ethTx types.Transaction, feed string) (*Transaction, error) {

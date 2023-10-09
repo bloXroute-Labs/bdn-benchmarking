@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	pb "github.com/bloXroute-Labs/gateway/v2/protobuf"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
 	log "github.com/sirupsen/logrus"
@@ -85,6 +86,57 @@ func (g GatewayWS) Receive(ctx context.Context, wg *sync.WaitGroup, out chan *Me
 			}
 		}
 
+	}
+}
+
+func (g GatewayWS) SendBatch(_ context.Context, wg *sync.WaitGroup, out chan *BatchMessage) {
+	defer wg.Done()
+
+	log.Infof("Initiating connection to %s %v", g.Name(), g.uri)
+
+	conn, err := ws.NewConnection(g.uri, g.authToken)
+	if err != nil {
+		log.Errorf("cannot establish connection to %s %s: %v", g.Name(), g.uri, err)
+		return
+	}
+
+	log.Infof("%s connection to %s established", g.Name(), g.uri)
+
+	defer func() {
+		if err := conn.Close(); err != nil {
+			log.Errorf("cannot close socket connection to %s: %v", g.uri, err)
+		}
+	}()
+
+	txs := generateTxs(56, 10)
+	requestTime, res, err := conn.SendBatchTx(txs)
+	if err != nil {
+		log.Errorf("cannot send batch tx to %s: %v", g.Name(), err)
+		return
+	}
+
+	responseTime := time.Now()
+
+	var msg wsBatchTxResponse
+	if err := json.Unmarshal(res, &msg); err != nil {
+		log.Errorf("failed to unmarshal ws transaction message: %v", err)
+		return
+	}
+
+	var txHashes []*pb.TxIndex
+	for idx, txHash := range msg.Result.TxHashes {
+		txIndex := &pb.TxIndex{
+			Idx:    int32(idx),
+			TxHash: txHash,
+		}
+		txHashes = append(txHashes, txIndex)
+	}
+
+	out <- &BatchMessage{
+		RequestTime:  requestTime,
+		ResponseTime: responseTime,
+		TxHashes:     txHashes,
+		Size:         len(res),
 	}
 }
 

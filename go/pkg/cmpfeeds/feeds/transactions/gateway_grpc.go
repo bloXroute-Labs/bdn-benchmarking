@@ -24,7 +24,7 @@ type GatewayGRPC struct {
 	c   *cli.Context
 }
 
-const defaultGatewayGRPCURI = "127.0.0.1:5002"
+const defaultGatewayGRPCURI = "127.0.0.1:5001"
 
 func NewGatewayGRPC(c *cli.Context, uri string) *GatewayGRPC {
 	if uri == "" {
@@ -85,6 +85,47 @@ func (g GatewayGRPC) Receive(ctx context.Context, wg *sync.WaitGroup, out chan *
 				}
 			}
 		}
+	}
+}
+
+func (g GatewayGRPC) SendBatch(ctx context.Context, wg *sync.WaitGroup, out chan *BatchMessage) {
+	defer wg.Done()
+
+	log.Infof("Initiating connection to %s %v", g.Name(), g.uri)
+
+	conn, err := grpc.Dial(g.uri, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithInitialWindowSize(constant.WindowSize))
+	if err != nil {
+		log.Fatalf("failed to connect %s: %v", g.Name(), err)
+	}
+	client := pb.NewGatewayClient(conn)
+
+	log.Infof("%s connection to %s established", g.Name(), g.uri)
+
+	//senderAddr := "5ce3da4832ea4707a90dc19e0c69c2f626824309"
+	batchRequest := &pb.BlxrBatchTXRequest{
+		TransactionsAndSenders: generateTxsWithSender(56, 10, ""),
+		AuthHeader:             g.c.String(flags.BloxrouteAuthHeader.Name),
+	}
+
+	log.Infof("gRPC size: %v", proto.Size(batchRequest))
+	requestTime := time.Now()
+	res, err := client.BlxrBatchTX(ctx, batchRequest)
+	if err != nil {
+		log.Fatalf("could not create %s: %v", g.Name(), err)
+	}
+	responseTime := time.Now()
+
+	var txHashses []string
+	txHashesIdx := res.GetTxHashes()
+	for _, tx := range txHashesIdx {
+		txHashses = append(txHashses, tx.TxHash)
+	}
+
+	out <- &BatchMessage{
+		RequestTime:  requestTime,
+		ResponseTime: responseTime,
+		TxHashes:     txHashesIdx,
+		Size:         proto.Size(res),
 	}
 }
 

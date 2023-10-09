@@ -67,6 +67,19 @@ func main() {
 				},
 				Action: cmpfeeds.NewCompareFeedTransactions().Run,
 			},
+			{
+				Name:  "sending-batch",
+				Usage: "compare the sending time of a batch of txs",
+				Flags: []cli.Flag{
+					flags.BloxrouteAuthHeader,
+					flags.BloxrouteTxFeedName,
+					flags.FirstFeed,
+					flags.SecondFeed,
+					flags.FirstFeedURI,
+					flags.SecondFeedURI,
+				},
+				Action: cmpfeeds.NewCompareSendingTransactionsService().Run,
+			},
 		},
 	}
 

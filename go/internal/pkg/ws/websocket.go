@@ -7,8 +7,10 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gorilla/websocket"
+	log "github.com/sirupsen/logrus"
 )
 
 // Request represents data which is needed to send RPC requests to ETH node or BX gateway.
@@ -17,6 +19,14 @@ type Request struct {
 	ID      int           `json:"id"`
 	Method  string        `json:"method"`
 	Params  []interface{} `json:"params"`
+}
+
+// RequestWithSingleParam represents data which is needed to send RPC requests to BX gateway with params as a single object
+type RequestWithSingleParam struct {
+	JSONRPC string      `json:"jsonrpc"`
+	ID      int         `json:"id"`
+	Method  string      `json:"method"`
+	Params  interface{} `json:"params"`
 }
 
 type subscribeResponse struct {
@@ -42,6 +52,32 @@ func (c *Connection) SubscribeBkFeedBX(
 	excBkContents bool,
 ) (*Subscription, error) {
 	return c.subscribe(newSubBkFeedRequestBX(id, feedName, excBkContents), bx)
+}
+
+func (c *Connection) SendBatchTx(transactions []string) (time.Time, []byte, error) {
+	options := make(map[string]interface{})
+	options["transactions"] = transactions
+	options["blockchain_network"] = "BSC-Mainnet"
+
+	req := NewRequestWithSingleParam(1, "blxr_batch_tx", options)
+
+	body, err := json.Marshal(req)
+	if err != nil {
+		return time.Time{}, nil, err
+	}
+
+	log.Infof("WS size: %v", len(body))
+	reqTime := time.Now()
+	if err = c.conn.WriteMessage(websocket.TextMessage, body); err != nil {
+		return time.Time{}, nil, err
+	}
+
+	_, data, err := c.conn.ReadMessage()
+	if err != nil {
+		return time.Time{}, nil, err
+	}
+
+	return reqTime, data, nil
 }
 
 func (c *Connection) subscribe(req *Request, t subscriptionType) (*Subscription, error) {
@@ -202,6 +238,16 @@ func newSubBkFeedRequestBX(id int, feedName string, excBkContents bool) *Request
 // NewRequest is a convenience method to create a Request struct.
 func NewRequest(id int, method string, params []interface{}) *Request {
 	return &Request{
+		JSONRPC: "2.0",
+		ID:      id,
+		Method:  method,
+		Params:  params,
+	}
+}
+
+// NewRequestWithSingleParam is a convenience method to create a RequestWithSingleParam struct.
+func NewRequestWithSingleParam(id int, method string, params interface{}) *RequestWithSingleParam {
+	return &RequestWithSingleParam{
 		JSONRPC: "2.0",
 		ID:      id,
 		Method:  method,
