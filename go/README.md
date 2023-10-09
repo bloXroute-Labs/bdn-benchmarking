@@ -29,6 +29,7 @@ This benchmark is invoked by `compare transactions` command which has the follow
    --block-feed-uri           block feed uri (to check that transactions are in blocks) (default is ws://127.0.0.1:28333/ws)
    --interval                 length of feed sample interval in seconds(default: 60sec)
    --num-intervals            number of intervals(default: 1)
+   --exclude-tx-contents      enable this flag will compare txs only by the hash
    --lead-time                seconds to wait before starting to compare feeds(default: 60sec)
    --trail-time               seconds to wait after interval to receive blocks on both feeds(default: 60sec)
    --dump                     specify info to dump, possible values: 'ALL', 'MISSING', 'ALL,MISSING'
