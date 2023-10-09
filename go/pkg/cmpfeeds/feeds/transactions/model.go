@@ -37,8 +37,12 @@ func newTransaction(ethTx types.Transaction, feed string) (*Transaction, error) 
 	}, nil
 }
 
-func (t Transaction) Key() string {
-	return t.Sender + strconv.FormatUint(t.Nonce, 10)
+func (t Transaction) Key(excludeTxContent bool) string {
+	if excludeTxContent {
+		return t.Hash
+	} else {
+		return t.Sender + strconv.FormatUint(t.Nonce, 10)
+	}
 }
 
 type bxTxFeedResponse struct {

@@ -35,6 +35,7 @@ func main() {
 					flags.FirstFeedURI,
 					flags.SecondFeedURI,
 					flags.BlockFeedURI,
+					flags.ExcludeTxContent,
 				},
 				Action: cmpfeeds.NewCompareTransactionsService().Run,
 			},

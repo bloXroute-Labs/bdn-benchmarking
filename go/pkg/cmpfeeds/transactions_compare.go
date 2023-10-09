@@ -58,7 +58,8 @@ type CompareTransactionsService struct {
 	timeToBeginComparison time.Time
 	timeToEndComparison   time.Time
 
-	numIntervals int
+	numIntervals     int
+	excludeTxContent bool
 }
 
 func NewCompareTransactionsService() *CompareTransactionsService {
@@ -89,6 +90,8 @@ func (cs *CompareTransactionsService) feedBuilders(c *cli.Context, feedName, uri
 		return transactions.NewGatewayGRPC(c, uri), nil
 	case "Fiber":
 		return transactions.NewFiber(c, uri), nil
+	case "GethJSONRPC":
+		return transactions.NewGeth(c, uri), nil
 	}
 
 	return nil, fmt.Errorf("feed: %s is not supported", feedName)
@@ -194,6 +197,7 @@ func (cs *CompareTransactionsService) Run(c *cli.Context) error {
 	cs.timeToBeginComparison = time.Now().Add(time.Second * time.Duration(leadTimeSec))
 	cs.timeToEndComparison = cs.timeToBeginComparison.Add(time.Second * time.Duration(intervalSec))
 	cs.numIntervals = c.Int(flags.NumIntervals.Name)
+	cs.excludeTxContent = c.Bool(flags.ExcludeTxContent.Name)
 
 	readerGroup.Add(3)
 
@@ -297,7 +301,7 @@ func (cs *CompareTransactionsService) stats(ignoreDelta int) string {
 			totalBytesFromSecondFeed += entry.secondFeedMessageSize
 		}
 
-		if !cs.seenSenderAndNonceInBlock.Contains(txKey) {
+		if !cs.seenSenderAndNonceInBlock.Contains(txKey) && !cs.excludeTxContent {
 			if entry.firstFeedTimeReceived.IsZero() {
 				log.Debugf("%s transaction %v was not found in a block\n", firstFeedName, txKey)
 			} else if entry.secondFeedTimeReceived.IsZero() {
@@ -520,7 +524,7 @@ func (cs *CompareTransactionsService) handleUpdates(
 				log.Errorf("error: %v", err)
 				continue
 			}
-			txKey := transaction.Key()
+			txKey := transaction.Key(cs.excludeTxContent)
 
 			if timeReceived.Before(cs.timeToBeginComparison) {
 				cs.leadNewTXs.Add(txKey)
@@ -559,7 +563,7 @@ func (cs *CompareTransactionsService) handleUpdates(
 				log.Errorf("error: %v", err)
 				continue
 			}
-			txKey := transaction.Key()
+			txKey := transaction.Key(cs.excludeTxContent)
 
 			if timeReceived.Before(cs.timeToBeginComparison) {
 				cs.leadNewTXs.Add(txKey)
