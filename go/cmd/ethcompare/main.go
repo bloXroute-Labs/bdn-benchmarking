@@ -37,6 +37,7 @@ func main() {
 					flags.FirstFeedEnableTLS,
 					flags.SecondFeedEnableTLS,
 					flags.BlockFeedURI,
+					flags.ExcludeTxContent,
 				},
 				Action: cmpfeeds.NewCompareTransactionsService().Run,
 			},

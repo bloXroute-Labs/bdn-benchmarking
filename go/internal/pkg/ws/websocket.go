@@ -35,6 +35,21 @@ func (c *Connection) SubscribeTxFeedBX(id int, feedName string) (*Subscription, 
 	return c.subscribe(newSubTxFeedRequestBX(id, feedName), bx)
 }
 
+// SubscribeTxFeedEth subscribes to the ETH node feed.
+func (c *Connection) SubscribeTxFeedEth(id int) (*Subscription, error) {
+	return c.subscribe(newSubTxFeedRequestEth(id), eth)
+}
+
+func (c *Connection) RequestTransactionByHash(id int, hash string) error {
+	request := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      id,
+		"method":  "eth_getTransactionByHash",
+		"params":  []interface{}{hash},
+	}
+	return c.conn.WriteJSON(request)
+}
+
 // SubscribeBkFeedBX subscribes to the BX gateway feed.
 func (c *Connection) SubscribeBkFeedBX(
 	id int,

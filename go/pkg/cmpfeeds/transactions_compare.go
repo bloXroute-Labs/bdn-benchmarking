@@ -27,9 +27,10 @@ type transactionFeed interface {
 	Name() string
 }
 
-type senderWithNonceFeed interface {
+type blockFeed interface {
 	Receive(ctx context.Context, wg *sync.WaitGroup, out chan *blocks.Message)
 	ParseMessageToSenderWithNonce(message *blocks.Message) ([]string, error)
+	ParseMessageToHash(message *blocks.Message) ([]string, error)
 	Name() string
 }
 
@@ -38,7 +39,7 @@ type CompareTransactionsService struct {
 
 	firstFeed   transactionFeed
 	secondFeed  transactionFeed
-	bxBlockFeed senderWithNonceFeed
+	bxBlockFeed blockFeed
 
 	firstFeedChan  chan *transactions.Message
 	secondFeedChan chan *transactions.Message
@@ -47,10 +48,10 @@ type CompareTransactionsService struct {
 	// sender+nonce to txInfo
 	seenTXs map[string]*nonceSenderEntry
 
-	seenSenderAndNonceInBlock utils.HashSet
-	trailNewTXs               utils.HashSet
-	leadNewTXs                utils.HashSet
-	highDeltaTXs              utils.HashSet
+	seenInBlock  utils.HashSet
+	trailNewTXs  utils.HashSet
+	leadNewTXs   utils.HashSet
+	highDeltaTXs utils.HashSet
 
 	allHashesFile     *csv.Writer
 	missingHashesFile *bufio.Writer
@@ -58,7 +59,8 @@ type CompareTransactionsService struct {
 	timeToBeginComparison time.Time
 	timeToEndComparison   time.Time
 
-	numIntervals int
+	numIntervals     int
+	excludeTxContent bool
 }
 
 func NewCompareTransactionsService() *CompareTransactionsService {
@@ -70,10 +72,10 @@ func NewCompareTransactionsService() *CompareTransactionsService {
 		secondFeedChan: make(chan *transactions.Message, bufSize),
 		bxBlockCh:      make(chan *blocks.Message, bufSize),
 
-		highDeltaTXs:              utils.NewHashSet(),
-		trailNewTXs:               utils.NewHashSet(),
-		leadNewTXs:                utils.NewHashSet(),
-		seenSenderAndNonceInBlock: utils.NewHashSet(),
+		highDeltaTXs: utils.NewHashSet(),
+		trailNewTXs:  utils.NewHashSet(),
+		leadNewTXs:   utils.NewHashSet(),
+		seenInBlock:  utils.NewHashSet(),
 
 		seenTXs: make(map[string]*nonceSenderEntry, constant.MapSize),
 	}
@@ -89,6 +91,8 @@ func (cs *CompareTransactionsService) feedBuilders(c *cli.Context, feedName, uri
 		return transactions.NewGatewayGRPC(c, uri, enableTLS), nil
 	case "Fiber":
 		return transactions.NewFiber(c, uri), nil
+	case "GethJSONRPC":
+		return transactions.NewGeth(c, uri), nil
 	}
 
 	return nil, fmt.Errorf("feed: %s is not supported", feedName)
@@ -194,6 +198,7 @@ func (cs *CompareTransactionsService) Run(c *cli.Context) error {
 	cs.timeToBeginComparison = time.Now().Add(time.Second * time.Duration(leadTimeSec))
 	cs.timeToEndComparison = cs.timeToBeginComparison.Add(time.Second * time.Duration(intervalSec))
 	cs.numIntervals = c.Int(flags.NumIntervals.Name)
+	cs.excludeTxContent = c.Bool(flags.ExcludeTxContent.Name)
 
 	readerGroup.Add(3)
 
@@ -297,7 +302,7 @@ func (cs *CompareTransactionsService) stats(ignoreDelta int) string {
 			totalBytesFromSecondFeed += entry.secondFeedMessageSize
 		}
 
-		if !cs.seenSenderAndNonceInBlock.Contains(txKey) {
+		if !cs.seenInBlock.Contains(txKey) {
 			if entry.firstFeedTimeReceived.IsZero() {
 				log.Debugf("%s transaction %v was not found in a block\n", firstFeedName, txKey)
 			} else if entry.secondFeedTimeReceived.IsZero() {
@@ -513,39 +518,12 @@ func (cs *CompareTransactionsService) handleUpdates(
 			if !ok {
 				continue
 			}
-
-			timeReceived := data.FeedReceivedTime
-			transaction, err := cs.firstFeed.ParseMessage(data)
-			if err != nil {
+			if err := cs.parseMessageFromStream(data, cs.firstFeed, true); err != nil {
+				if err == constant.EmptyResponseFromGeth {
+					continue
+				}
 				log.Errorf("error: %v", err)
 				continue
-			}
-			txKey := transaction.Key()
-
-			if timeReceived.Before(cs.timeToBeginComparison) {
-				cs.leadNewTXs.Add(txKey)
-				continue
-			}
-
-			if entry, ok := cs.seenTXs[txKey]; ok {
-				if entry.firstFeedTimeReceived.IsZero() {
-					entry.firstFeedTimeReceived = timeReceived
-					entry.firstFeedMessageSize = data.Size
-					entry.firstFeedTXHash = transaction.Hash
-				}
-			} else if timeReceived.Before(cs.timeToEndComparison) &&
-				!cs.trailNewTXs.Contains(txKey) &&
-				!cs.leadNewTXs.Contains(txKey) {
-
-				cs.seenTXs[txKey] = &nonceSenderEntry{
-					nonce:                 transaction.Nonce,
-					sender:                transaction.Sender,
-					firstFeedTimeReceived: timeReceived,
-					firstFeedMessageSize:  data.Size,
-					firstFeedTXHash:       transaction.Hash,
-				}
-			} else {
-				cs.trailNewTXs.Add(txKey)
 			}
 
 		case data, ok := <-cs.secondFeedChan:
@@ -553,38 +531,9 @@ func (cs *CompareTransactionsService) handleUpdates(
 				continue
 			}
 
-			timeReceived := data.FeedReceivedTime
-			transaction, err := cs.secondFeed.ParseMessage(data)
-			if err != nil {
+			if err := cs.parseMessageFromStream(data, cs.secondFeed, false); err != nil {
 				log.Errorf("error: %v", err)
 				continue
-			}
-			txKey := transaction.Key()
-
-			if timeReceived.Before(cs.timeToBeginComparison) {
-				cs.leadNewTXs.Add(txKey)
-				continue
-			}
-
-			if entry, ok := cs.seenTXs[txKey]; ok {
-				if entry.secondFeedTimeReceived.IsZero() {
-					entry.secondFeedTimeReceived = timeReceived
-					entry.secondFeedMessageSize = data.Size
-					entry.secondFeedTXHash = transaction.Hash
-				}
-			} else if timeReceived.Before(cs.timeToEndComparison) &&
-				!cs.trailNewTXs.Contains(txKey) &&
-				!cs.leadNewTXs.Contains(txKey) {
-
-				cs.seenTXs[txKey] = &nonceSenderEntry{
-					nonce:                  transaction.Nonce,
-					sender:                 transaction.Sender,
-					secondFeedTimeReceived: timeReceived,
-					secondFeedMessageSize:  data.Size,
-					secondFeedTXHash:       transaction.Hash,
-				}
-			} else {
-				cs.trailNewTXs.Add(txKey)
 			}
 
 		case data, ok := <-cs.bxBlockCh:
@@ -592,15 +541,72 @@ func (cs *CompareTransactionsService) handleUpdates(
 				fmt.Printf("failed to get data from bxblockch %v", data)
 				continue
 			}
-
-			blockTxs, err := cs.bxBlockFeed.ParseMessageToSenderWithNonce(data)
+			var blockTxs []string
+			var err error
+			if cs.excludeTxContent {
+				blockTxs, err = cs.bxBlockFeed.ParseMessageToHash(data)
+			} else {
+				blockTxs, err = cs.bxBlockFeed.ParseMessageToSenderWithNonce(data)
+			}
 			if err != nil {
 				continue
 			}
 
 			for _, tx := range blockTxs {
-				cs.seenSenderAndNonceInBlock.Add(tx)
+				cs.seenInBlock.Add(tx)
 			}
+		}
+	}
+}
+
+func (cs *CompareTransactionsService) parseMessageFromStream(data *transactions.Message, feed transactionFeed, isFirstFeed bool) error {
+	timeReceived := data.FeedReceivedTime
+	transaction, err := feed.ParseMessage(data)
+	if err != nil {
+		return err
+	}
+	txKey := transaction.Key(cs.excludeTxContent)
+
+	if timeReceived.Before(cs.timeToBeginComparison) {
+		cs.leadNewTXs.Add(txKey)
+		return nil
+	}
+	if entry, ok := cs.seenTXs[txKey]; ok {
+		if isFirstFeed && entry.firstFeedTimeReceived.IsZero() {
+			entry.firstFeedTimeReceived = timeReceived
+			entry.firstFeedMessageSize = data.Size
+			entry.firstFeedTXHash = transaction.Hash
+		} else if !isFirstFeed && entry.secondFeedTimeReceived.IsZero() {
+			entry.secondFeedTimeReceived = timeReceived
+			entry.secondFeedMessageSize = data.Size
+			entry.secondFeedTXHash = transaction.Hash
+		}
+	} else if timeReceived.Before(cs.timeToEndComparison) &&
+		!cs.trailNewTXs.Contains(txKey) &&
+		!cs.leadNewTXs.Contains(txKey) {
+		cs.seenTXs[txKey] = newTxEntry(isFirstFeed, transaction, timeReceived, data.Size)
+	} else {
+		cs.trailNewTXs.Add(txKey)
+	}
+	return nil
+}
+
+func newTxEntry(isFirstFeed bool, transaction *transactions.Transaction, timeReceived time.Time, size int) *nonceSenderEntry {
+	if isFirstFeed {
+		return &nonceSenderEntry{
+			nonce:                 transaction.Nonce,
+			sender:                transaction.Sender,
+			firstFeedTimeReceived: timeReceived,
+			firstFeedMessageSize:  size,
+			firstFeedTXHash:       transaction.Hash,
+		}
+	} else {
+		return &nonceSenderEntry{
+			nonce:                  transaction.Nonce,
+			sender:                 transaction.Sender,
+			secondFeedTimeReceived: timeReceived,
+			secondFeedMessageSize:  size,
+			secondFeedTXHash:       transaction.Hash,
 		}
 	}
 }

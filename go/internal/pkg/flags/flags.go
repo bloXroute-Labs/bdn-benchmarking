@@ -92,4 +92,9 @@ var (
 		Usage: "uri for block feed(gw/cloud-api)",
 		Value: "ws://127.0.0.1:28333/ws",
 	}
+	ExcludeTxContent = &cli.BoolFlag{
+		Name:  "exclude-tx-contents",
+		Usage: "compare txs only with hash",
+		Value: false,
+	}
 )
