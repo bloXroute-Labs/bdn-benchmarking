@@ -97,6 +97,23 @@ func (g GatewayWS) ParseMessage(message *Message) (*Block, error) {
 	return &Block{Hash: msg.Params.Result.Hash}, nil
 }
 
+func (g GatewayWS) ParseMessageToHash(message *Message) ([]string, error) {
+	var msg BXBkFeedResponse
+	if err := json.Unmarshal(message.RawBlock, &msg); err != nil {
+		log.Errorf("failed to unmarshal ws block message: %v, from %s feed", err, g.uri)
+		return nil, err
+	}
+
+	h := msg.Params.Result.Hash
+	log.Debugf("got message at %s (BXR node, ALL), hash: %s", message.FeedReceivedTime, h)
+
+	var hashes []string
+	for _, v := range msg.Params.Result.Transactions {
+		hashes = append(hashes, v["hash"].(string))
+	}
+	return hashes, nil
+}
+
 func (g GatewayWS) ParseMessageToSenderWithNonce(message *Message) ([]string, error) {
 	var msg BXBkFeedResponse
 	if err := json.Unmarshal(message.RawBlock, &msg); err != nil {

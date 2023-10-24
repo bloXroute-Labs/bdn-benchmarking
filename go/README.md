@@ -28,6 +28,7 @@ This benchmark is invoked by `compare transactions` command which has the follow
    --fiber-auth-key           fiber auth key
    --mevlink-api-key          mevlink api key
    --mevkink-api-secret       mevlink api secret
+   --exclude-tx-contents      enable this flag will compare txs only by the hash, used only in geth comparesion
    --block-feed-uri           block feed uri (to check that transactions are in blocks) (default is ws://127.0.0.1:28333/ws)
    --interval                 length of feed sample interval in seconds(default: 60sec)
    --num-intervals            number of intervals(default: 1)
@@ -55,6 +56,11 @@ go run cmd/ethcompare/main.go transactions --bloxroute-auth-header <bloxroute-au
 Gateway GRPC vs Mevlink:
 ```shell
 go run cmd/ethcompare/main.go transactions --bloxroute-auth-header <bloxroute-auth-header> --mevLink-api-key <mevlink-api-key> --mevLink-api-secret <mevlink-api-secret> --first-feed GatewayGRPC --second-feed Mevlink --first-feed-uri 127.0.0.1:5002 --block-feed-uri ws://127.0.0.1:28334/ws --trail-time 10 --interval 180  --dump "ALL,MISSING"  
+```
+
+Gateway WS vs Geth:
+```shell
+go run cmd/ethcompare/main.go transactions --bloxroute-auth-header <bloxroute-auth-header> --first-feed GethJSONRPC --second-feed GatewayWS --first-feed-uri ws://<geth_ip>:<geth_port> --second-feed-uri ws://127.0.0.1:28333/ws --block-feed-uri ws://127.0.0.1:28334/ws --trail-time 10 --interval 180  --dump "ALL,MISSING"  
 ```
 
 Enterprise streaming endpoint gRPC(https://docs.bloxroute.com/introduction/cloud-api-ips) vs Fiber:
