@@ -40,6 +40,10 @@ This benchmark is invoked by `compare transactions` command which has the follow
 ```
 
 #### Example
+
+**IMPORTANT**: for the script to work correctly, you need to add flag `--tx-include-sender-in-feed` to gateway startup arguments.
+This needs to be done because gateway by default doesn't include sender address in the feed starting from version `v2.128.14.1`
+
 Here is an example of using `transactions` command:
 The following command can be used to print help related to `blocks` command:
 ```shell
