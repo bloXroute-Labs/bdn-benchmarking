@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+
 	"performance/internal/pkg/flags"
 	"performance/pkg/cmpfeeds"
 
@@ -29,6 +30,7 @@ func main() {
 					flags.FiberAuthKey,
 					flags.MEVLinkAPIKey,
 					flags.MEVLinkAPISecret,
+					flags.BlockRazorAPIKey,
 					flags.NetworkNumber,
 					flags.FirstFeed,
 					flags.SecondFeed,

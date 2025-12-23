@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
@@ -81,7 +82,8 @@ func (g GatewayWS) Receive(ctx context.Context, wg *sync.WaitGroup, out chan *Me
 			}
 
 			out <- &Message{
-				RawBlock: data,
+				RawBlock:         data,
+				FeedReceivedTime: time.Now().UTC(),
 			}
 		}
 	}
@@ -138,6 +140,6 @@ func (g GatewayWS) ParseMessageToSenderWithNonce(message *Message) ([]string, er
 	return senderWithNonce, nil
 }
 
-func (GatewayWS) Name() string {
-	return "GatewayBlocksWS"
+func (g GatewayWS) Name() string {
+	return fmt.Sprintf("GatewayBlocksGRPC(%s)", g.uri)
 }

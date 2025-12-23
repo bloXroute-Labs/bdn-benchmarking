@@ -54,6 +54,10 @@ var (
 		Name:  "mevLink-api-secret",
 		Usage: "mevLink api secret",
 	}
+	BlockRazorAPIKey = &cli.StringFlag{
+		Name:  "block-razor-api-key",
+		Usage: "block razor api key",
+	}
 	NetworkNumber = &cli.IntFlag{
 		Name:  "network-num",
 		Usage: "network number, 1 for ETH(default), 56 for BSC",
@@ -61,12 +65,12 @@ var (
 	}
 	FirstFeed = &cli.StringFlag{
 		Name:     "first-feed",
-		Usage:    "first feed to compare, can be: Mevlink, Fiber, GatewayWS, GatewayGRPC",
+		Usage:    "first feed to compare, can be: Mevlink, Fiber, GatewayWS, GatewayGRPC, BlockRazor",
 		Required: true,
 	}
 	SecondFeed = &cli.StringFlag{
 		Name:     "second-feed",
-		Usage:    "second feed to compare, can be: Mevlink, Fiber, GatewayWS, GatewayGRPC",
+		Usage:    "second feed to compare, can be: Mevlink, Fiber, GatewayWS, GatewayGRPC, BlockRazor",
 		Required: true,
 	}
 	FirstFeedURI = &cli.StringFlag{

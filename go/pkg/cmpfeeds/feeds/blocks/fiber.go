@@ -2,9 +2,11 @@ package blocks
 
 import (
 	"context"
-	"performance/internal/pkg/flags"
+	"errors"
 	"sync"
 	"time"
+
+	"performance/internal/pkg/flags"
 
 	fiber "github.com/chainbound/fiber-go"
 	log "github.com/sirupsen/logrus"
@@ -39,10 +41,10 @@ func (f Fiber) Receive(ctx context.Context, wg *sync.WaitGroup, out chan *Messag
 		log.Fatal(err)
 	}
 
-	ch := make(chan *fiber.ExecutionPayload)
+	ch := make(chan *fiber.Block)
 	go func() {
 		if err := client.SubscribeNewExecutionPayloads(ch); err != nil {
-			if ctx.Err() == context.Canceled {
+			if errors.Is(err, context.Canceled) {
 				return
 			}
 			log.Fatal(err)
@@ -59,7 +61,7 @@ func (f Fiber) Receive(ctx context.Context, wg *sync.WaitGroup, out chan *Messag
 		case block := <-ch:
 			timeReceived := time.Now()
 
-			blockHash := block.Header.Hash.String()
+			blockHash := block.Header.Hash().String()
 			msg := &Message{
 				FeedReceivedTime: timeReceived,
 				BlockHash:        blockHash,
