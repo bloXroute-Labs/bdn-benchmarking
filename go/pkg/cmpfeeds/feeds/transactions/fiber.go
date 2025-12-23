@@ -2,9 +2,11 @@ package transactions
 
 import (
 	"context"
-	"performance/internal/pkg/flags"
+	"errors"
 	"sync"
 	"time"
+
+	"performance/internal/pkg/flags"
 
 	fiber "github.com/chainbound/fiber-go"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -42,10 +44,10 @@ func (f Fiber) Receive(ctx context.Context, wg *sync.WaitGroup, out chan *Messag
 		log.Fatalf("failed to connect to %s: %v", f.Name(), err)
 	}
 
-	ch := make(chan *fiber.Transaction)
+	ch := make(chan *fiber.RawTransactionWithSender)
 	go func() {
-		if err := client.SubscribeNewTxs(nil, ch); err != nil {
-			if ctx.Err() == context.Canceled {
+		if err := client.SubscribeNewRawTxs(nil, ch); err != nil {
+			if errors.Is(err, context.Canceled) {
 				return
 			}
 			log.Fatalf("failed to get new transactions from %s :%v", f.Name(), err)
@@ -60,17 +62,10 @@ func (f Fiber) Receive(ctx context.Context, wg *sync.WaitGroup, out chan *Messag
 			log.Infof("stop %s feed", f.Name())
 			return
 		case tx := <-ch:
-			timeReceived := time.Now()
-			txByte, err := tx.ToNative().MarshalBinary()
-			if err != nil {
-				log.Errorf("could not marshal %s transaction: %v", f.Name(), err)
-				continue
-			}
-
 			msg := &Message{
-				RawTx:            txByte,
-				FeedReceivedTime: timeReceived,
-				Size:             len(txByte),
+				RawTx:            tx.Rlp,
+				FeedReceivedTime: time.Now(),
+				Size:             len(tx.Rlp),
 			}
 			out <- msg
 		}

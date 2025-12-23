@@ -2,9 +2,7 @@ package transactions
 
 import (
 	"context"
-	"fmt"
-	"performance/internal/pkg/flags"
-	"performance/pkg/constant"
+	"errors"
 	"sync"
 	"time"
 
@@ -18,6 +16,9 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+
+	"performance/internal/pkg/flags"
+	"performance/pkg/constant"
 )
 
 type GatewayGRPC struct {
@@ -40,8 +41,11 @@ func (g GatewayGRPC) Receive(ctx context.Context, wg *sync.WaitGroup, out chan *
 
 	log.Infof("Initiating connection to %s %v", g.Name(), g.uri)
 
+	auth := bloXrouteAuth{authHeader: g.c.String(flags.BloxrouteAuthHeader.Name)}
+
 	dialOptions := []grpc.DialOption{
 		grpc.WithInitialWindowSize(constant.WindowSize),
+		grpc.WithPerRPCCredentials(&auth),
 	}
 
 	if g.enableTLS {
@@ -50,14 +54,13 @@ func (g GatewayGRPC) Receive(ctx context.Context, wg *sync.WaitGroup, out chan *
 		dialOptions = append(dialOptions, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
 
-	conn, err := grpc.Dial(g.uri, dialOptions...)
+	c, err := grpc.NewClient(g.uri, dialOptions...)
 	if err != nil {
 		log.Fatalf("failed to connect %s: %v", g.Name(), err)
 	}
-	client := pb.NewGatewayClient(conn)
+	client := pb.NewGatewayClient(c)
 
-	//TODO: add filters
-	stream, err := client.NewTxs(ctx, &pb.TxsRequest{Filters: "", AuthHeader: g.c.String(flags.BloxrouteAuthHeader.Name)})
+	stream, err := client.NewTxs(ctx, &pb.TxsRequest{Filters: ""})
 	if err != nil {
 		log.Fatalf("could not create %s: %v", g.Name(), err)
 	}
@@ -79,7 +82,7 @@ func (g GatewayGRPC) Receive(ctx context.Context, wg *sync.WaitGroup, out chan *
 			timeReceived := time.Now()
 
 			if err != nil {
-				if ctx.Err() == context.Canceled {
+				if errors.Is(err, context.Canceled) {
 					return
 				}
 				grpcErrorStatus := status.Convert(err)
@@ -117,5 +120,17 @@ func (g GatewayGRPC) ParseMessage(message *Message) (*Transaction, error) {
 }
 
 func (g GatewayGRPC) Name() string {
-	return fmt.Sprintf("GatewayTransactionsGRPC(%s)", g.uri)
+	return "GatewayTransactionsGRPC"
+}
+
+type bloXrouteAuth struct {
+	authHeader string
+}
+
+func (a *bloXrouteAuth) GetRequestMetadata(context.Context, ...string) (map[string]string, error) {
+	return map[string]string{"authorization": a.authHeader}, nil
+}
+
+func (a *bloXrouteAuth) RequireTransportSecurity() bool {
+	return false
 }

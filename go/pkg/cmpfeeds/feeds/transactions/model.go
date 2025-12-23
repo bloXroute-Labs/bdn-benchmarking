@@ -1,6 +1,7 @@
 package transactions
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -22,7 +23,11 @@ type Transaction struct {
 }
 
 func newTransaction(ethTx types.Transaction, feed string) (*Transaction, error) {
-	sender, err := types.Sender(types.NewLondonSigner(ethTx.ChainId()), &ethTx)
+	if ethTx.ChainId() == nil || ethTx.ChainId().Int64() == 0 {
+		return nil, fmt.Errorf("invalid chain id %v", ethTx.ChainId())
+	}
+
+	sender, err := types.Sender(types.NewPragueSigner(ethTx.ChainId()), &ethTx)
 	if err != nil {
 		log.Errorf("can not extract sender from transaction %s: %v", feed, err)
 		return nil, err

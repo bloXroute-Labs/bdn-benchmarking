@@ -4,22 +4,26 @@ import (
 	"bufio"
 	"context"
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"math"
 	"os"
-	"performance/internal/pkg/flags"
-	"performance/internal/pkg/utils"
-	"performance/pkg/cmpfeeds/feeds/blocks"
-	"performance/pkg/cmpfeeds/feeds/transactions"
-	"performance/pkg/constant"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"performance/internal/pkg/flags"
+	"performance/internal/pkg/utils"
+	"performance/pkg/cmpfeeds/feeds/blocks"
+	"performance/pkg/cmpfeeds/feeds/transactions"
+	"performance/pkg/constant"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 )
+
+const bufSize = 10000
 
 type transactionFeed interface {
 	Receive(ctx context.Context, wg *sync.WaitGroup, out chan *transactions.Message)
@@ -64,8 +68,6 @@ type CompareTransactionsService struct {
 }
 
 func NewCompareTransactionsService() *CompareTransactionsService {
-	const bufSize = 10000
-
 	return &CompareTransactionsService{
 		handlers:       make(chan handler),
 		firstFeedChan:  make(chan *transactions.Message, bufSize),
@@ -93,6 +95,8 @@ func (cs *CompareTransactionsService) feedBuilders(c *cli.Context, feedName, uri
 		return transactions.NewFiber(c, uri), nil
 	case "GethJSONRPC":
 		return transactions.NewGeth(c, uri), nil
+	case "BlockRazor":
+		return transactions.NewBlockRazor(c, uri), nil
 	}
 
 	return nil, fmt.Errorf("feed: %s is not supported", feedName)
@@ -244,6 +248,7 @@ func (cs *CompareTransactionsService) Run(c *cli.Context) error {
 				)
 
 				cs.seenTXs = make(map[string]*nonceSenderEntry)
+				cs.seenInBlock = utils.NewHashSet()
 				cs.leadNewTXs = utils.NewHashSet()
 				cs.timeToEndComparison = time.Now().Add(time.Second * time.Duration(intervalSec))
 
@@ -291,6 +296,13 @@ func (cs *CompareTransactionsService) stats(ignoreDelta int) string {
 		numberOfDifferentHashes         = 0
 		timeDiffsUs                     = []int64{}
 	)
+
+	numHidden := 0
+	for txKey, _ := range cs.seenInBlock {
+		if _, ok := cs.seenTXs[txKey]; !ok {
+			numHidden += 1
+		}
+	}
 
 	for txKey, entry := range cs.seenTXs {
 		if !entry.firstFeedTimeReceived.IsZero() {
@@ -451,6 +463,7 @@ func (cs *CompareTransactionsService) stats(ignoreDelta int) string {
 			"\nTotal Transactions summary:\n"+
 			"Total tx from %s: %d (in block) / %d (total) \n"+
 			"Total tx from %s: %d (in block) / %d (total) \n"+
+			"Total hidden tx: %d \n"+
 			"Total bytes from %s: %d (in block) / %d (total) \n"+
 			"Total bytes from %s: %d (in block) / %d (total) \n"+
 			"Number of different hashes: %d",
@@ -483,6 +496,8 @@ func (cs *CompareTransactionsService) stats(ignoreDelta int) string {
 		secondFeedName,
 		totalTxInBlockFromSecondFeed,
 		totalTxFromSecondFeed,
+
+		numHidden,
 
 		firstFeedName,
 		totalBytesInBlockFromFirstFeed,
@@ -519,10 +534,10 @@ func (cs *CompareTransactionsService) handleUpdates(
 				continue
 			}
 			if err := cs.parseMessageFromStream(data, cs.firstFeed, true); err != nil {
-				if err == constant.EmptyResponseFromGeth {
+				if errors.Is(err, constant.EmptyResponseFromGeth) {
 					continue
 				}
-				log.Errorf("error: %v", err)
+				// log.Errorf("error: %v", err)
 				continue
 			}
 
@@ -532,7 +547,7 @@ func (cs *CompareTransactionsService) handleUpdates(
 			}
 
 			if err := cs.parseMessageFromStream(data, cs.secondFeed, false); err != nil {
-				log.Errorf("error: %v", err)
+				// log.Errorf("error: %v", err)
 				continue
 			}
 
@@ -563,7 +578,7 @@ func (cs *CompareTransactionsService) parseMessageFromStream(data *transactions.
 	timeReceived := data.FeedReceivedTime
 	transaction, err := feed.ParseMessage(data)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to parse message from feed %s: %w", feed.Name(), err)
 	}
 	txKey := transaction.Key(cs.excludeTxContent)
 
