@@ -23,16 +23,14 @@ type BlockRazor struct {
 	uri    string
 }
 
-// defaultBlockRazorURL is the default BlockRazor URL for Frankfurt.
-const defaultBlockRazorURL = "35.157.64.49:50051"
-
 func NewBlockRazor(c *cli.Context, uri string) *BlockRazor {
 	apiKey := c.String(flags.BlockRazorAPIKey.Name)
 	if apiKey == "" {
 		log.Fatalf("BlockRazor API key is required")
 	}
+
 	if uri == "" {
-		uri = defaultBlockRazorURL
+		log.Fatalf("BlockRazor URL is required")
 	}
 
 	return &BlockRazor{
