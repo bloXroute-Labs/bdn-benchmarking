@@ -1,4 +1,6 @@
-# Public benchmarking scripts (Python)
+# Public benchmarking scripts (Python) — DEPRECATED
+
+> **DEPRECATION NOTICE:** The Python benchmarking scripts in this folder are deprecated and will no longer receive updates. The preferred, actively maintained implementation lives under `go/`. See the repository `DEPRECATION.md` for rationale and migration guidance.
 
 ## Required prerequisites
 
